@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert, Badge, Box, Button, Chip, CircularProgress, Dialog, DialogContent, DialogTitle,
   Divider, IconButton, InputAdornment, MenuItem, Pagination, Paper,
@@ -12,6 +12,7 @@ import DownloadRounded from '@mui/icons-material/DownloadRounded'
 import PrintRounded from '@mui/icons-material/PrintRounded'
 import CloseRounded from '@mui/icons-material/CloseRounded'
 import FilterListRounded from '@mui/icons-material/FilterListRounded'
+import AddRounded from '@mui/icons-material/AddRounded'
 import { api, apiError } from '../api/client'
 import { generateInvoicePDF, type InvoiceData } from '../utils/pdf'
 
@@ -382,6 +383,100 @@ export function InvoicePreviewDialog({ invoiceId, onClose }: { invoiceId: number
   )
 }
 
+type PendingOrder = {
+  id: number
+  kind: 'in' | 'out'
+  job_number: string
+  customer_name: string
+  total_amount: string
+  advance: string
+  delivery_status: string
+  delivery_id: number | null
+}
+
+function GenerateInvoiceDialog({ onClose, onGenerated }: { onClose: () => void; onGenerated: (id: number) => void }) {
+  const queryClient = useQueryClient()
+  const { data: orders = [], isLoading, error } = useQuery({
+    queryKey: ['pending-orders'],
+    queryFn: async () => (await api.get<PendingOrder[]>('/invoices/pending-orders/')).data,
+  })
+
+  const [generatingId, setGeneratingId] = useState<number | null>(null)
+  const [genError, setGenError] = useState('')
+
+  const handleGenerate = async (order: PendingOrder) => {
+    setGeneratingId(order.id)
+    setGenError('')
+    try {
+      const payload = order.kind === 'in' ? { in_job_id: order.id } : { out_job_id: order.id }
+      const res = await api.post<{ id: number }>('/invoices/generate-for-job/', payload)
+      await queryClient.invalidateQueries({ queryKey: ['invoices'] })
+      await queryClient.invalidateQueries({ queryKey: ['pending-orders'] })
+      onGenerated(res.data.id)
+    } catch (err) {
+      setGenError(apiError(err))
+    } finally {
+      setGeneratingId(null)
+    }
+  }
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Typography variant="h6" fontWeight={700}>Generate Invoice for Order</Typography>
+        <IconButton size="small" onClick={onClose}><CloseRounded /></IconButton>
+      </DialogTitle>
+      <DialogContent dividers>
+        {genError && <Alert severity="error" sx={{ mb: 2 }}>{genError}</Alert>}
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{apiError(error)}</Alert>}
+        {isLoading ? (
+          <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>
+        ) : orders.length === 0 ? (
+          <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
+            <ReceiptLongRounded sx={{ fontSize: 44, opacity: 0.3, mb: 1 }} />
+            <Typography fontWeight={600}>No pending orders to invoice</Typography>
+            <Typography variant="body2" sx={{ mt: 0.5 }}>All completed production orders have already been invoiced.</Typography>
+          </Box>
+        ) : (
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ fontWeight: 700 }}>Job No</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Type</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Customer</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Total</TableCell>
+                <TableCell sx={{ fontWeight: 700 }}>Delivery</TableCell>
+                <TableCell align="right" sx={{ fontWeight: 700 }}>Action</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {orders.map((o) => (
+                <TableRow key={`${o.kind}-${o.id}`}>
+                  <TableCell sx={{ fontWeight: 700 }}>{o.job_number}</TableCell>
+                  <TableCell><Chip size="small" label={o.kind === 'in' ? 'In Job' : 'Out Job'} /></TableCell>
+                  <TableCell>{o.customer_name || '—'}</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>₹{Number(o.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</TableCell>
+                  <TableCell><Chip size="small" variant="outlined" label={o.delivery_status.toUpperCase()} /></TableCell>
+                  <TableCell align="right">
+                    <Button
+                      size="small"
+                      variant="contained"
+                      disabled={generatingId === o.id}
+                      onClick={() => handleGenerate(o)}
+                    >
+                      {generatingId === o.id ? 'Generating…' : 'Generate Invoice'}
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 const PAGE_SIZE = 15
 
 export function InvoiceManagementPage() {
@@ -392,6 +487,7 @@ export function InvoiceManagementPage() {
   const [dateTo, setDateTo] = useState('')
   const [page, setPage] = useState(1)
   const [previewId, setPreviewId] = useState<number | null>(null)
+  const [generateOpen, setGenerateOpen] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
 
   const params: Record<string, string | number> = { page, page_size: PAGE_SIZE }
@@ -424,15 +520,34 @@ export function InvoiceManagementPage() {
   return (
     <Box>
       {previewId && <InvoicePreviewDialog invoiceId={previewId} onClose={() => setPreviewId(null)} />}
+      {generateOpen && (
+        <GenerateInvoiceDialog
+          onClose={() => setGenerateOpen(false)}
+          onGenerated={(id) => {
+            setGenerateOpen(false)
+            setPreviewId(id)
+          }}
+        />
+      )}
 
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
-        <Box sx={{ p: 1.2, borderRadius: 2, bgcolor: 'primary.main', color: 'white', display: 'flex' }}>
-          <ReceiptLongRounded />
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Box sx={{ p: 1.2, borderRadius: 2, bgcolor: 'primary.main', color: 'white', display: 'flex' }}>
+            <ReceiptLongRounded />
+          </Box>
+          <Box>
+            <Typography variant="h5" fontWeight={700}>Invoice Management</Typography>
+            <Typography variant="body2" color="text.secondary">All generated invoices · auto-created on delivery</Typography>
+          </Box>
         </Box>
-        <Box sx={{ flex: 1 }}>
-          <Typography variant="h5" fontWeight={700}>Invoice Management</Typography>
-          <Typography variant="body2" color="text.secondary">All generated invoices · auto-created on delivery</Typography>
-        </Box>
+        <Button
+          variant="contained"
+          startIcon={<AddRounded />}
+          onClick={() => setGenerateOpen(true)}
+          sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
+        >
+          Generate Invoice
+        </Button>
       </Box>
 
       {/* Toolbar */}

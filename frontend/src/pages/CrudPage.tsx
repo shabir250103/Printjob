@@ -831,6 +831,28 @@ export function CrudPage({ resourceKey, embedded = false }: { resourceKey: strin
                             </IconButton>
                           </Tooltip>
                         )}
+                        {resourceKey === 'deliveries' && row.status !== 'delivered' && (
+                          <Tooltip title="Mark Delivered & Auto-Generate Invoice">
+                            <IconButton
+                              size="small"
+                              color="success"
+                              onClick={async () => {
+                                if (window.confirm(`Mark delivery for ${row.job_number || 'job'} as Delivered? This will auto-generate the invoice.`)) {
+                                  try {
+                                    await api.patch(`/deliveries/${row.id}/`, { status: 'delivered' })
+                                    await queryClient.invalidateQueries({ queryKey: ['resource'] })
+                                    await queryClient.invalidateQueries({ queryKey: ['invoices'] })
+                                    setNotice('Delivery marked as Delivered. Invoice generated successfully.')
+                                  } catch (err) {
+                                    setSaveError(apiError(err))
+                                  }
+                                }
+                              }}
+                            >
+                              <CheckCircleOutlineRounded fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                         {['in-jobs', 'deliveries'].includes(resourceKey) && Boolean(row.invoice_id) && (
                           <Tooltip title="View / Print Invoice">
                             <IconButton

@@ -462,7 +462,7 @@ def transfer_cash(source, destination, amount, transfer_date, reason, user):
 
 
 @transaction.atomic
-def auto_generate_invoice(delivery, user):
+def auto_generate_invoice(delivery, user, force=False):
     """
     Generate an invoice after a delivery is marked as DELIVERED.
     Idempotent: returns existing invoice if one already exists for the job.
@@ -471,7 +471,7 @@ def auto_generate_invoice(delivery, user):
     """
     from .models import CompanySettings, Invoice, Delivery, InJob, OutJob
 
-    if delivery.status != Delivery.Status.DELIVERED:
+    if not force and delivery.status != Delivery.Status.DELIVERED:
         return None
 
     job = delivery.job

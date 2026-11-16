@@ -640,7 +640,13 @@ class DeliveryViewSet(SearchableModelViewSet):
     search_fields = ('in_job__job_number', 'out_job__job_number', 'contact_person', 'contact_number', 'transport_company')
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        delivery = serializer.save(created_by=self.request.user)
+        if delivery.status == Delivery.Status.DELIVERED:
+            try:
+                auto_generate_invoice(delivery, self.request.user)
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception('Invoice auto-generation failed for delivery %s', delivery.pk)
 
     def perform_update(self, serializer):
         """Auto-generate invoice when delivery status transitions to DELIVERED."""
@@ -817,6 +823,80 @@ class InvoiceViewSet(SearchableModelViewSet):
         else:
             data['company'] = None
         return Response(data)
+
+    @action(detail=False, methods=('get',), url_path='pending-orders')
+    def pending_orders(self, request):
+        """List completed jobs or deliveries that do not have an invoice yet."""
+        in_jobs = InJob.objects.filter(
+            printing_status=InJob.ProductionStatus.COMPLETED,
+            finishing_status=InJob.ProductionStatus.COMPLETED,
+            invoice__isnull=True,
+        ).select_related('customer')
+        out_jobs = OutJob.objects.filter(
+            status=OutJob.Status.COMPLETED,
+            invoice__isnull=True,
+        ).select_related('customer')
+
+        results = []
+        for j in in_jobs:
+            deliv = getattr(j, 'delivery', None)
+            results.append({
+                'id': j.id,
+                'kind': 'in',
+                'job_number': j.job_number,
+                'customer_name': j.customer_name or (j.customer.name if j.customer else ''),
+                'total_amount': str(j.total_amount),
+                'advance': str(j.advance),
+                'delivery_status': deliv.status if deliv else 'none',
+                'delivery_id': deliv.id if deliv else None,
+            })
+        for j in out_jobs:
+            deliv = getattr(j, 'delivery', None)
+            results.append({
+                'id': j.id,
+                'kind': 'out',
+                'job_number': j.job_number,
+                'customer_name': j.customer_name or (j.customer.name if j.customer else ''),
+                'total_amount': str(j.total_amount),
+                'advance': str(j.advance),
+                'delivery_status': deliv.status if deliv else 'none',
+                'delivery_id': deliv.id if deliv else None,
+            })
+        return Response(results)
+
+    @action(detail=False, methods=('post',), url_path='generate-for-job')
+    def generate_for_job(self, request):
+        """Generate an invoice for a specific job or delivery."""
+        delivery_id = request.data.get('delivery_id')
+        in_job_id = request.data.get('in_job_id')
+        out_job_id = request.data.get('out_job_id')
+
+        delivery = None
+        if delivery_id:
+            delivery = Delivery.objects.filter(pk=delivery_id).first()
+        elif in_job_id:
+            job = InJob.objects.filter(pk=in_job_id).first()
+            if job:
+                delivery, _ = Delivery.objects.get_or_create(
+                    in_job=job,
+                    defaults={'created_by': request.user, 'status': Delivery.Status.DELIVERED}
+                )
+        elif out_job_id:
+            job = OutJob.objects.filter(pk=out_job_id).first()
+            if job:
+                delivery, _ = Delivery.objects.get_or_create(
+                    out_job=job,
+                    defaults={'created_by': request.user, 'status': Delivery.Status.DELIVERED}
+                )
+
+        if not delivery:
+            return Response({'error': 'Order or delivery not found.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        inv = auto_generate_invoice(delivery, request.user, force=True)
+        if not inv:
+            return Response({'error': 'Could not generate invoice.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(InvoiceSerializer(inv, context={'request': request}).data, status=status.HTTP_201_CREATED)
 
 
 class CompanySettingsViewSet(
