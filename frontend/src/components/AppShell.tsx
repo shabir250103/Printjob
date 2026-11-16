@@ -73,6 +73,9 @@ export function AppShell() {
     if (item.permission === 'teamaccess') {
       return can('users') || can('permissions')
     }
+    if (item.path === '/invoices') {
+      return can('accounts') || can('delivery')
+    }
     return can(item.permission)
   }), [auth, canShowPayments, can])
   const userName = [auth?.user.first_name, auth?.user.last_name].filter(Boolean).join(' ') || auth?.user.username || 'User'

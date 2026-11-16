@@ -50,6 +50,7 @@ type Invoice = {
   company_logo_url: string
   in_job: number | null
   out_job: number | null
+  delivery_status?: string
 }
 
 type InvoicePreviewData = Invoice & {
@@ -66,9 +67,13 @@ const statusColors: Record<string, 'success' | 'warning' | 'error' | 'default'> 
   paid: 'success', partial: 'warning', unpaid: 'error',
 }
 
+const deliveryStatusColors: Record<string, 'success' | 'warning' | 'info' | 'error' | 'default'> = {
+  delivered: 'success', dispatched: 'info', ready: 'warning', pending: 'default', failed: 'error',
+}
+
 const fmt = (v: string | number) => `₹${Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`
 
-function InvoicePreviewDialog({ invoiceId, onClose }: { invoiceId: number; onClose: () => void }) {
+export function InvoicePreviewDialog({ invoiceId, onClose }: { invoiceId: number; onClose: () => void }) {
   const query = useQuery({
     queryKey: ['invoice-preview', invoiceId],
     queryFn: async () => (await api.get<InvoicePreviewData>(`/invoices/${invoiceId}/preview-data/`)).data,
@@ -382,6 +387,7 @@ const PAGE_SIZE = 15
 export function InvoiceManagementPage() {
   const [search, setSearch] = useState('')
   const [paymentStatus, setPaymentStatus] = useState('')
+  const [deliveryStatus, setDeliveryStatus] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [page, setPage] = useState(1)
@@ -391,15 +397,29 @@ export function InvoiceManagementPage() {
   const params: Record<string, string | number> = { page, page_size: PAGE_SIZE }
   if (search) params.search = search
   if (paymentStatus) params.payment_status = paymentStatus
+  if (deliveryStatus) params.delivery_status = deliveryStatus
   if (dateFrom) params.date_from = dateFrom
   if (dateTo) params.date_to = dateTo
 
   const query = useQuery({
     queryKey: ['invoices', params],
-    queryFn: async () => (await api.get<{ results: Invoice[]; count: number }>('/invoices/', { params })).data,
+    queryFn: async () => {
+      const res = await api.get<Invoice[] | { results: Invoice[]; count: number }>('/invoices/', { params })
+      const data = res.data
+      if (Array.isArray(data)) {
+        return { results: data, count: data.length, isRawArray: true }
+      }
+      return { results: data?.results ?? [], count: data?.count ?? 0, isRawArray: false }
+    },
   })
 
-  const activeFilters = [paymentStatus, dateFrom, dateTo].filter(Boolean).length
+  const allInvoices = query.data?.results ?? []
+  const totalCount = query.data?.count ?? 0
+  const displayedInvoices = query.data?.isRawArray
+    ? allInvoices.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+    : allInvoices
+
+  const activeFilters = [paymentStatus, deliveryStatus, dateFrom, dateTo].filter(Boolean).length
 
   return (
     <Box>
@@ -439,14 +459,21 @@ export function InvoiceManagementPage() {
       {showFilters && (
         <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap', p: 2, bgcolor: 'action.hover', borderRadius: 2 }}>
           <TextField select label="Payment Status" size="small" value={paymentStatus} onChange={e => { setPaymentStatus(e.target.value); setPage(1) }} sx={{ minWidth: 150 }}>
-            <MenuItem value="">All</MenuItem>
+            <MenuItem value="">All Payments</MenuItem>
             <MenuItem value="paid">Paid</MenuItem>
             <MenuItem value="partial">Partial</MenuItem>
             <MenuItem value="unpaid">Unpaid</MenuItem>
           </TextField>
+          <TextField select label="Delivery Status" size="small" value={deliveryStatus} onChange={e => { setDeliveryStatus(e.target.value); setPage(1) }} sx={{ minWidth: 150 }}>
+            <MenuItem value="">All Deliveries</MenuItem>
+            <MenuItem value="delivered">Delivered</MenuItem>
+            <MenuItem value="dispatched">Dispatched</MenuItem>
+            <MenuItem value="ready">Ready</MenuItem>
+            <MenuItem value="pending">Pending</MenuItem>
+          </TextField>
           <TextField label="From Date" type="date" size="small" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1) }} slotProps={{ inputLabel: { shrink: true } }} />
           <TextField label="To Date" type="date" size="small" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1) }} slotProps={{ inputLabel: { shrink: true } }} />
-          <Button variant="text" onClick={() => { setPaymentStatus(''); setDateFrom(''); setDateTo(''); setPage(1) }}>Clear</Button>
+          <Button variant="text" onClick={() => { setPaymentStatus(''); setDeliveryStatus(''); setDateFrom(''); setDateTo(''); setPage(1) }}>Clear</Button>
         </Box>
       )}
 
@@ -457,7 +484,7 @@ export function InvoiceManagementPage() {
         <Table>
           <TableHead sx={{ bgcolor: '#f5f3ef' }}>
             <TableRow>
-              {['Invoice No', 'Date', 'Order Ref', 'Customer', 'Amount', 'GST', 'Grand Total', 'Status', 'Actions'].map(h => (
+              {['Invoice No', 'Date', 'Order Ref', 'Customer', 'Amount', 'GST', 'Grand Total', 'Payment', 'Delivery', 'Actions'].map(h => (
                 <TableCell key={h} sx={{ fontWeight: 700, fontSize: 12, py: 1.5 }}>{h}</TableCell>
               ))}
             </TableRow>
@@ -465,18 +492,18 @@ export function InvoiceManagementPage() {
           <TableBody>
             {query.isPending ? (
               <TableRow>
-                <TableCell colSpan={9} align="center" sx={{ py: 6 }}>
+                <TableCell colSpan={10} align="center" sx={{ py: 6 }}>
                   <CircularProgress size={28} />
                 </TableCell>
               </TableRow>
-            ) : !query.data?.results.length ? (
+            ) : displayedInvoices.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} align="center" sx={{ py: 6, color: 'text.secondary' }}>
+                <TableCell colSpan={10} align="center" sx={{ py: 6, color: 'text.secondary' }}>
                   <ReceiptLongRounded sx={{ fontSize: 40, mb: 1, display: 'block', mx: 'auto', opacity: 0.3 }} />
                   No invoices found
                 </TableCell>
               </TableRow>
-            ) : query.data.results.map((inv) => (
+            ) : displayedInvoices.map((inv) => (
               <TableRow key={inv.id} hover sx={{ cursor: 'pointer' }} onClick={() => setPreviewId(inv.id)}>
                 <TableCell sx={{ fontWeight: 700, color: 'primary.main' }}>{inv.invoice_no}</TableCell>
                 <TableCell>{inv.invoice_date}</TableCell>
@@ -488,16 +515,28 @@ export function InvoiceManagementPage() {
                 <TableCell>
                   <Chip label={inv.payment_status?.toUpperCase()} color={statusColors[inv.payment_status] || 'default'} size="small" sx={{ fontWeight: 700 }} />
                 </TableCell>
+                <TableCell>
+                  <Chip
+                    label={(inv.delivery_status || 'delivered').toUpperCase()}
+                    color={deliveryStatusColors[inv.delivery_status || 'delivered'] || 'default'}
+                    size="small"
+                    variant="outlined"
+                    sx={{ fontWeight: 700 }}
+                  />
+                </TableCell>
                 <TableCell onClick={e => e.stopPropagation()}>
                   <Box sx={{ display: 'flex', gap: 0.5 }}>
-                    <Tooltip title="Preview">
-                      <IconButton size="small" onClick={() => setPreviewId(inv.id)}><VisibilityRounded fontSize="small" /></IconButton>
+                    <Tooltip title="Preview / Print">
+                      <IconButton size="small" color="primary" onClick={() => setPreviewId(inv.id)}><VisibilityRounded fontSize="small" /></IconButton>
                     </Tooltip>
                     <Tooltip title="Download PDF">
-                      <IconButton size="small" onClick={async () => {
+                      <IconButton size="small" color="secondary" onClick={async () => {
                         const data = await api.get<InvoiceData>(`/invoices/${inv.id}/preview-data/`)
                         await generateInvoicePDF(data.data)
                       }}><DownloadRounded fontSize="small" /></IconButton>
+                    </Tooltip>
+                    <Tooltip title="Print">
+                      <IconButton size="small" onClick={() => setPreviewId(inv.id)}><PrintRounded fontSize="small" /></IconButton>
                     </Tooltip>
                   </Box>
                 </TableCell>
@@ -508,10 +547,10 @@ export function InvoiceManagementPage() {
       </Paper>
 
       {/* Pagination */}
-      {query.data && query.data.count > PAGE_SIZE && (
+      {totalCount > PAGE_SIZE && (
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
           <Pagination
-            count={Math.ceil(query.data.count / PAGE_SIZE)} page={page}
+            count={Math.ceil(totalCount / PAGE_SIZE)} page={page}
             onChange={(_, v) => setPage(v)} color="primary"
           />
         </Box>

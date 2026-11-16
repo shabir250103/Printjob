@@ -27,12 +27,14 @@ import VisibilityRounded from '@mui/icons-material/VisibilityRounded'
 import SwapHorizRounded from '@mui/icons-material/SwapHorizRounded'
 import HourglassTopRounded from '@mui/icons-material/HourglassTopRounded'
 import CheckCircleOutlineRounded from '@mui/icons-material/CheckCircleOutlineRounded'
+import ReceiptLongRounded from '@mui/icons-material/ReceiptLongRounded'
 import { api, apiError } from '../api/client'
 import { resources } from '../config/resources'
 import type { ApiRecord, ColumnConfig, FieldConfig } from '../types'
 import { PageHeader } from '../components/PageHeader'
 import { RecordDialog } from '../components/RecordDialog'
 import { RecordPaymentDialog } from '../components/RecordPaymentDialog'
+import { InvoicePreviewDialog } from './InvoiceManagementPage'
 import { useAuth } from '../auth/AuthContext'
 import { FinanceSummary } from '../components/FinanceSummary'
 import { MachineDailyOverview } from '../components/MachineDailyOverview'
@@ -156,6 +158,7 @@ export function CrudPage({ resourceKey, embedded = false }: { resourceKey: strin
   const [newStatus, setNewStatus] = useState('')
   const [outJobPriority, setOutJobPriority] = useState(searchParams.get('priority') || '')
   const [outJobStatus, setOutJobStatus] = useState(searchParams.get('status') || '')
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null)
   const allowedFilters = ['status', 'priority', 'printing_status', 'finishing_status', 'payment_status', 'low_stock', 'job', 'account']
   const filters = Object.fromEntries([...searchParams.entries()].filter(([key]) => allowedFilters.includes(key)))
   const filterKey = JSON.stringify(filters)
@@ -697,6 +700,23 @@ export function CrudPage({ resourceKey, embedded = false }: { resourceKey: strin
                                 <VisibilityRounded fontSize="small" />
                               </IconButton>
                             </Tooltip>
+                            {Boolean(row.invoice_id) && (
+                              <Tooltip title="View / Print Invoice">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => setSelectedInvoiceId(Number(row.invoice_id))}
+                                  sx={{
+                                    border: '1px solid #bfdbfe',
+                                    borderRadius: 1.5,
+                                    p: 0.75,
+                                    color: 'primary.main',
+                                    '&:hover': { bgcolor: '#eff6ff', color: 'primary.dark' },
+                                  }}
+                                >
+                                  <ReceiptLongRounded fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            )}
                             <Tooltip title="Edit">
                               <IconButton
                                 size="small"
@@ -808,6 +828,18 @@ export function CrudPage({ resourceKey, embedded = false }: { resourceKey: strin
                               onClick={() => setPaymentJob({ job: row, kind: resourceKey === 'in-jobs' ? 'in' : 'out' })}
                             >
                               <PaymentsRounded fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+                        {['in-jobs', 'deliveries'].includes(resourceKey) && Boolean(row.invoice_id) && (
+                          <Tooltip title="View / Print Invoice">
+                            <IconButton
+                              size="small"
+                              color="primary"
+                              aria-label={`View Invoice for ${row.job_number || 'delivery'}`}
+                              onClick={() => setSelectedInvoiceId(Number(row.invoice_id))}
+                            >
+                              <ReceiptLongRounded fontSize="small" />
                             </IconButton>
                           </Tooltip>
                         )}
@@ -987,6 +1019,16 @@ export function CrudPage({ resourceKey, embedded = false }: { resourceKey: strin
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 2 }}>
+          {Boolean(viewingOutJob?.invoice_id) && (
+            <Button
+              variant="outlined"
+              color="primary"
+              startIcon={<ReceiptLongRounded />}
+              onClick={() => setSelectedInvoiceId(Number(viewingOutJob?.invoice_id))}
+            >
+              View Invoice
+            </Button>
+          )}
           {canShowPayments && viewingOutJob && (
             <Button
               variant="outlined"
@@ -1057,6 +1099,10 @@ export function CrudPage({ resourceKey, embedded = false }: { resourceKey: strin
           </Button>
         </DialogActions>
       </Dialog>
+
+      {selectedInvoiceId && (
+        <InvoicePreviewDialog invoiceId={selectedInvoiceId} onClose={() => setSelectedInvoiceId(null)} />
+      )}
     </>
   )
 }

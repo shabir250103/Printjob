@@ -340,6 +340,8 @@ class InJobSerializer(serializers.ModelSerializer):
     accepted_by_display = serializers.SerializerMethodField()
     delivery_status = serializers.SerializerMethodField()
     designer_display = serializers.SerializerMethodField()
+    invoice_id = serializers.SerializerMethodField()
+    invoice_no = serializers.SerializerMethodField()
     machine_name = serializers.SerializerMethodField()
     current_count = serializers.IntegerField(read_only=True)
     priority_label = serializers.SerializerMethodField()
@@ -366,6 +368,20 @@ class InJobSerializer(serializers.ModelSerializer):
     def get_delivery_status(self, job):
         delivery = getattr(job, 'delivery', None)
         return delivery.status if delivery else None
+
+    def get_invoice_id(self, job):
+        try:
+            inv = getattr(job, 'invoice', None)
+            return inv.id if inv else None
+        except Exception:
+            return None
+
+    def get_invoice_no(self, job):
+        try:
+            inv = getattr(job, 'invoice', None)
+            return inv.invoice_no if inv else None
+        except Exception:
+            return None
 
     def get_designer_display(self, job):
         return (job.designer.get_full_name() or job.designer.username) if job.designer_id else ''
@@ -504,6 +520,7 @@ class OutJobSerializer(serializers.ModelSerializer):
     created_by_display = serializers.SerializerMethodField()
     accepted_by_display = serializers.SerializerMethodField()
     delivery_status = serializers.SerializerMethodField()
+    invoice_id = serializers.SerializerMethodField()
     payment_method = serializers.SerializerMethodField()
     customer_payment_method = serializers.CharField(write_only=True, required=False, allow_blank=True)
     customer_cash_account = serializers.PrimaryKeyRelatedField(queryset=CashAccount.objects.filter(is_active=True), write_only=True, required=False, allow_null=True)
@@ -526,6 +543,20 @@ class OutJobSerializer(serializers.ModelSerializer):
     def get_delivery_status(self, job):
         delivery = getattr(job, 'delivery', None)
         return delivery.status if delivery else None
+
+    def get_invoice_id(self, job):
+        try:
+            inv = getattr(job, 'invoice', None)
+            return inv.id if inv else None
+        except Exception:
+            return None
+
+    def get_invoice_no(self, job):
+        try:
+            inv = getattr(job, 'invoice', None)
+            return inv.invoice_no if inv else None
+        except Exception:
+            return None
 
     ADMIN_FIELDS = frozenset((
         'total_amount', 'advance', 'balance', 'expenses', 'profit', 'payment_status',
@@ -758,6 +789,28 @@ class PipelineToOutJobSerializer(serializers.Serializer):
 class DeliverySerializer(serializers.ModelSerializer):
     job_number = serializers.SerializerMethodField()
     job_type = serializers.SerializerMethodField()
+    invoice_id = serializers.SerializerMethodField()
+    invoice_no = serializers.SerializerMethodField()
+
+    def get_invoice_id(self, delivery):
+        job = delivery.in_job or delivery.out_job
+        if not job:
+            return None
+        try:
+            inv = getattr(job, 'invoice', None)
+            return inv.id if inv else None
+        except Exception:
+            return None
+
+    def get_invoice_no(self, delivery):
+        job = delivery.in_job or delivery.out_job
+        if not job:
+            return None
+        try:
+            inv = getattr(job, 'invoice', None)
+            return inv.invoice_no if inv else None
+        except Exception:
+            return None
 
     class Meta:
         model = Delivery
@@ -923,6 +976,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
     job_number = serializers.SerializerMethodField()
     job_type = serializers.SerializerMethodField()
     customer_name = serializers.SerializerMethodField()
+    delivery_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Invoice
@@ -943,6 +997,12 @@ class InvoiceSerializer(serializers.ModelSerializer):
 
     def get_customer_name(self, obj):
         return obj.customer_name_snapshot or (obj.job.customer_name if obj.job else '')
+
+    def get_delivery_status(self, obj):
+        job = obj.job
+        if job and hasattr(job, 'delivery') and job.delivery:
+            return job.delivery.status
+        return 'delivered'
 
     def validate(self, attrs):
         in_job = attrs.get('in_job', getattr(self.instance, 'in_job', None))

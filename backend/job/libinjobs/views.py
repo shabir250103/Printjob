@@ -786,6 +786,11 @@ class InvoiceViewSet(SearchableModelViewSet):
             queryset = queryset.filter(in_job__isnull=False)
         elif job_type == 'out':
             queryset = queryset.filter(out_job__isnull=False)
+        delivery_status = self.request.query_params.get('delivery_status')
+        if delivery_status:
+            queryset = queryset.filter(
+                Q(in_job__delivery__status=delivery_status) | Q(out_job__delivery__status=delivery_status)
+            )
         return queryset
 
     @action(detail=True, methods=('get',), url_path='preview-data')

@@ -44,6 +44,11 @@ function TeamAccessRoute() {
   return can('users') || can('permissions') ? <TeamAccessPage /> : <Navigate to="/forbidden" replace />
 }
 
+function InvoiceRoute() {
+  const { can } = useAuth()
+  return can('accounts') || can('delivery') ? <InvoiceManagementPage /> : <Navigate to="/forbidden" replace />
+}
+
 function Forbidden() {
   const { auth, logout } = useAuth()
   const hasAvailableScreen = Boolean(auth?.user.is_superuser || Object.values(auth?.permissions || {}).some(Boolean))
@@ -82,7 +87,7 @@ export function App() {
         <Route path="vendor-payments/*" element={<Navigate to="/finance" replace />} />
         <Route path="cash-transfers/*" element={<Navigate to="/finance" replace />} />
         <Route path="cash-transactions/*" element={<Navigate to="/finance" replace />} />
-        <Route path="invoices" element={<ModuleRoute permission="accounts"><InvoiceManagementPage /></ModuleRoute>} />
+        <Route path="invoices" element={<InvoiceRoute />} />
         <Route path="company-settings" element={<ModuleRoute permission="company_settings"><CompanySettingsPage /></ModuleRoute>} />
         {Object.entries(resources).filter(([key]) => key !== 'invoices').map(([key, config]) => (
           <Route key={key}>

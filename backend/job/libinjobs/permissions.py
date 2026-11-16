@@ -67,7 +67,11 @@ def check_permission_grant(actor, module, allowed):
 
 class ModuleAccessPermission(BasePermission):
     def has_permission(self, request, view):
-        module = getattr(view, 'module_name', None) or MODULE_BY_BASENAME.get(getattr(view, 'basename', ''))
+        basename = getattr(view, 'basename', '')
+        if basename == 'invoice':
+            if user_has_module_access(request.user, 'accounts') or user_has_module_access(request.user, 'delivery'):
+                return True
+        module = getattr(view, 'module_name', None) or MODULE_BY_BASENAME.get(basename)
         return True if not module else user_has_module_access(request.user, module)
 
     def has_object_permission(self, request, view, obj):
