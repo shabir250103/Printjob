@@ -582,7 +582,7 @@ export function CrudPage({ resourceKey, embedded = false }: { resourceKey: strin
                     <TableCell>JOB NO</TableCell>
                     <TableCell>CUSTOMER</TableCell>
                     <TableCell>VENDOR</TableCell>
-                    <TableCell>PRIORITY</TableCell>
+                    <TableCell>JOB TYPE</TableCell>
                     <TableCell>QUANTITY</TableCell>
                     <TableCell>STATUS</TableCell>
                     <TableCell>DELIVERY DATE</TableCell>
@@ -599,8 +599,6 @@ export function CrudPage({ resourceKey, embedded = false }: { resourceKey: strin
               <TableBody>
                 {resourceKey === 'out-jobs' ? (
                   displayRows.map((row) => {
-                    const priorityKey = String(row.priority || 'normal').toLowerCase()
-                    const pBadge = outJobPriorityBadgeColors[priorityKey] || { bg: '#64748b', color: '#fff' }
                     const statusKey = String(row.status || 'pending').toLowerCase()
                     const sBadge = outJobStatusBadgeColors[statusKey] || { bg: '#64748b', color: '#fff', label: humanize(row.status) }
                     const paymentKey = String(row.payment_status || 'pending').toLowerCase()
@@ -632,20 +630,8 @@ export function CrudPage({ resourceKey, embedded = false }: { resourceKey: strin
                         <TableCell sx={{ color: '#334155', fontWeight: 500, whiteSpace: 'nowrap' }}>
                           {String(row.vendor || '—')}
                         </TableCell>
-                        <TableCell>
-                          <Chip
-                            size="small"
-                            label={humanize(row.priority || 'normal')}
-                            sx={{
-                              bgcolor: pBadge.bg,
-                              color: pBadge.color,
-                              fontWeight: 700,
-                              fontSize: 11.5,
-                              borderRadius: '12px',
-                              px: 0.5,
-                              height: 24,
-                            }}
-                          />
+                        <TableCell sx={{ color: '#334155', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                          {String(row.job_type || '—')}
                         </TableCell>
                         <TableCell sx={{ fontWeight: 600, color: '#334155' }}>
                           {String(row.quantity ?? '—')}
