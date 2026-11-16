@@ -24,13 +24,99 @@ type Options = {
 type DailyMachineCounter = { machine_id: number; morning_count: number | null; job_clicks_booked: number }
 type Form = Record<string, string | boolean | number[]>
 
-// Format: initials_customer_[job_type_]GSMgsm_SS/DS_lamination_colour-sheetssheet[.ext]
-// job_type segment is optional — old filenames without it still parse (regex backtracks)
-const namePattern = /^([^_]+)_([^_]+)_(?:([^_]+)_)?(\d+)\s*gsm\s*_(SS|DS)_([^_]+)_(.+)-(\d+)sheet(?:\.\w+)?$/i
+// Format: initials_customer_gsm_SS-or-DS_lamination_colour-sheetcount
+export function parseInJobName(jobName: string): Record<string, string> | null {
+  if (!jobName || !jobName.trim()) return null
+  const raw = jobName.trim().replace(/\.[a-zA-Z0-9]{2,5}$/, '')
+  if (!raw.includes('_')) return null
+
+  const parts = raw.split('_').map((p) => p.trim())
+  const nonEmpty = parts.filter(Boolean)
+  if (nonEmpty.length < 2) return null
+
+  const res: Record<string, string> = {}
+  res.job_initials = nonEmpty[0]
+  res.customer_name = nonEmpty[1]
+
+  const remaining = nonEmpty.slice(2)
+  const unclaimed: string[] = []
+
+  for (const p of remaining) {
+    const mQty = p.match(/^(\d+)\s*nos?$/i)
+    if (mQty) {
+      res.quantity = mQty[1]
+      continue
+    }
+
+    const mSht = p.match(/^(\d+)\s*sheets?$/i)
+    if (mSht) {
+      res.sheet_count = mSht[1]
+      continue
+    }
+
+    const mSide = p.match(/^(SS|DS)$/i)
+    if (mSide) {
+      res.side_mode = mSide[1].toUpperCase()
+      continue
+    }
+
+    const mGsm = p.match(/^(\d+)\s*gsm$/i)
+    if (mGsm) {
+      res.gsm = mGsm[1]
+      continue
+    }
+
+    const mColSht = p.match(/^(\d+\+\d+|cmyk|multi)-(\d+)(?:sheets?)?$/i)
+    if (mColSht) {
+      res.colour_spec = mColSht[1]
+      res.sheet_count = mColSht[2]
+      continue
+    }
+
+    const mCol = p.match(/^(\d+\+\d+)$/)
+    if (mCol) {
+      res.colour_spec = mCol[1]
+      continue
+    }
+
+    const mLam = p.match(/\b(matt|gloss|velvet|thermal|sparkle|bop|lami|lamination)\b/i)
+    if (mLam) {
+      res.lamination_type = p
+      continue
+    }
+
+    unclaimed.push(p)
+  }
+
+  for (const p of unclaimed) {
+    if (!res.gsm && /^\d{2,4}$/.test(p)) {
+      res.gsm = p
+    } else if (!res.paper_type && (/gold/i.test(p) || /met/i.test(p) || /paper/i.test(p) || /board/i.test(p) || !res.gsm)) {
+      res.paper_type = p
+    } else if (!res.lamination_type && /none/i.test(p)) {
+      res.lamination_type = 'None'
+    } else if (!res.lamination_type && res.side_mode && res.colour_spec) {
+      res.lamination_type = p
+    } else if (!res.remarks) {
+      res.remarks = p
+    }
+  }
+
+  if (!res.side_mode && res.colour_spec) {
+    const mSplit = res.colour_spec.match(/^(\d+)\+(\d+)$/)
+    if (mSplit) {
+      const back = parseInt(mSplit[2], 10)
+      res.side_mode = back > 0 ? 'DS' : 'SS'
+    }
+  }
+
+  return res
+}
+
 const PARSED_FIELD_LABELS: Record<string, string> = {
   job_initials: 'Initials', customer_name: 'Customer', job_type: 'Job Type', gsm: 'GSM',
-  side_mode: 'Side', lamination_type: 'Lamination', colour_spec: 'Colour', sheet_count: 'Sheets',
-  stock_item: 'Stock',
+  paper_type: 'Paper', side_mode: 'Side', lamination_type: 'Lamination', colour_spec: 'Colour',
+  sheet_count: 'Sheets', quantity: 'Quantity', stock_item: 'Stock', remarks: 'Remarks',
 }
 const numericFields = new Set(['gsm', 'quantity', 'sheet_count', 'wastage_count', 'total_amount', 'advance', 'expenses', 'gst_percent'])
 const idFields = new Set(['pipeline_job', 'customer', 'stock_item', 'printer', 'designer', 'machine', 'everyone_in_department', 'priority_option', 'side_option', 'payment_option'])
@@ -133,59 +219,74 @@ export function ConvertToInJobDialog({ row, pending, error, page = false, standa
   const currentCount = morningCount == null ? null : morningCount + overallClicks
   const balance = Number(form.total_amount || 0) - Number(form.advance || 0)
   const profit = Number(form.total_amount || 0) - Number(form.expenses || 0)
-  const parsedName = useMemo(() => !form.job_name || namePattern.test(String(form.job_name).trim()), [form.job_name])
+  const parsedName = useMemo(() => !form.job_name || Boolean(parseInJobName(String(form.job_name).trim())), [form.job_name])
 
   const updateJobName = (value: string) => {
     touched.current.add('job_name')
-    const match = value.trim().match(namePattern)
+    const parsed = parseInJobName(value)
     setForm((current) => {
       const next: Form = { ...current, job_name: value }
-      if (match) {
-        // Groups: 1=initials 2=customer 3=job_type(optional) 4=gsm 5=side 6=lamination 7=colour 8=sheets
-        const parsed: Record<string, string> = {
-          job_initials: match[1].trim(),
-          customer_name: match[2].trim(),
-          ...(match[3] ? { job_type: match[3].trim() } : {}),
-          gsm: match[4].trim(),
-          side_mode: match[5].trim().toUpperCase(),
-          lamination_type: match[6].trim(),
-          colour_spec: match[7].trim(),
-          sheet_count: match[8].trim(),
-        }
-        Object.entries(parsed).forEach(([key, parsedValue]) => { if (!touched.current.has(key)) next[key] = parsedValue })
-        // Auto-select stock item only when exactly 1 item matches the parsed GSM
+      if (parsed) {
+        Object.entries(parsed).forEach(([key, parsedValue]) => {
+          if (!touched.current.has(key)) next[key] = parsedValue
+        })
+        // Auto-select stock item only when not touched
         if (!touched.current.has('stock_item')) {
-          const parsedGsm = parseInt(match[4].trim(), 10)
-          const matches = (options.data?.stock_items || []).filter((s) => s.gsm === parsedGsm)
-          if (matches.length === 1) {
-            const stock = matches[0]
-            next.stock_item = String(stock.id)
-            if (!touched.current.has('paper_type')) next.paper_type = stock.name
-            if (!touched.current.has('paper_size')) next.paper_size = stock.size || ''
+          if (parsed.gsm) {
+            const parsedGsm = parseInt(parsed.gsm, 10)
+            const matches = (options.data?.stock_items || []).filter((s) => s.gsm === parsedGsm)
+            if (matches.length === 1) {
+              const stock = matches[0]
+              next.stock_item = String(stock.id)
+              if (!touched.current.has('paper_type')) next.paper_type = stock.name
+              if (!touched.current.has('paper_size')) next.paper_size = stock.size || ''
+            }
+          } else if (parsed.paper_type) {
+            const pt = parsed.paper_type.toLowerCase()
+            const matches = (options.data?.stock_items || []).filter((s) =>
+              s.name.toLowerCase().includes(pt)
+            )
+            if (matches.length === 1) {
+              const stock = matches[0]
+              next.stock_item = String(stock.id)
+              if (!touched.current.has('paper_size')) next.paper_size = stock.size || ''
+              if (!touched.current.has('gsm') && stock.gsm) next.gsm = String(stock.gsm)
+            }
+          }
+        }
+        // Auto-select existing customer if name matches
+        if (parsed.customer_name && !touched.current.has('customer')) {
+          const matchCust = (options.data?.customers || []).find((c) =>
+            c.name.trim().toLowerCase() === parsed.customer_name.trim().toLowerCase()
+          )
+          if (matchCust) {
+            next.customer = String(matchCust.id)
+            if (!touched.current.has('contact_number') && matchCust.mobile) {
+              next.contact_number = matchCust.mobile
+            }
           }
         }
       }
       return next
     })
   }
+
   const parsedFields = useMemo(() => {
     if (!form.job_name) return null
-    const match = String(form.job_name).trim().match(namePattern)
-    if (!match) return null
-    // Groups: 1=initials 2=customer 3=job_type(optional) 4=gsm 5=side 6=lamination 7=colour 8=sheets
-    const parsedGsm = parseInt(match[4].trim(), 10)
-    const stockMatches = (options.data?.stock_items || []).filter((s) => s.gsm === parsedGsm)
-    const fields: Record<string, string> = {
-      job_initials: match[1].trim(),
-      customer_name: match[2].trim(),
-      ...(match[3] ? { job_type: match[3].trim() } : {}),
-      gsm: match[4].trim(),
-      side_mode: match[5].trim().toUpperCase(),
-      lamination_type: match[6].trim(),
-      colour_spec: match[7].trim(),
-      sheet_count: match[8].trim(),
+    const parsed = parseInJobName(String(form.job_name))
+    if (!parsed) return null
+    const fields: Record<string, string> = { ...parsed }
+    if (parsed.gsm) {
+      const parsedGsm = parseInt(parsed.gsm, 10)
+      const stockMatches = (options.data?.stock_items || []).filter((s) => s.gsm === parsedGsm)
+      if (stockMatches.length === 1) fields.stock_item = stockMatches[0].name
+    } else if (parsed.paper_type) {
+      const pt = parsed.paper_type.toLowerCase()
+      const stockMatches = (options.data?.stock_items || []).filter((s) =>
+        s.name.toLowerCase().includes(pt)
+      )
+      if (stockMatches.length === 1) fields.stock_item = stockMatches[0].name
     }
-    if (stockMatches.length === 1) fields.stock_item = stockMatches[0].name
     return fields
   }, [form.job_name, options.data?.stock_items])
   const chooseCustomer = (id: string, created?: Item & { mobile: string }) => {
@@ -286,7 +387,7 @@ export function ConvertToInJobDialog({ row, pending, error, page = false, standa
                 parsedFields
                   ? '✓ Auto-filled from filename — edit any field below to override'
                   : !form.job_name
-                    ? 'Paste a Konica filename: initials_customer_GSMgsm_SS/DS_lamination_colour-NNsheet'
+                    ? 'Format: initials_customer_gsm_SS-or-DS_lamination_colour-sheetcount'
                     : 'No pattern match — fill fields manually below'
               }
             />
@@ -304,7 +405,7 @@ export function ConvertToInJobDialog({ row, pending, error, page = false, standa
                   <Chip
                     key={key}
                     size="small"
-                    label={`${PARSED_FIELD_LABELS[key]}: ${val}`}
+                    label={`${PARSED_FIELD_LABELS[key] || key}: ${val}`}
                     variant="outlined"
                     sx={{ fontSize: 11 }}
                   />

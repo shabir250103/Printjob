@@ -12,7 +12,7 @@ from .models import (
 from .models import Delivery, InJob, OutJob, PipelineJob
 
 
-# Handles both "300gsm" and "300 gsm", optional job_type segment, and optional file extension
+# Handles initials_customer_gsm_SS-or-DS_lamination_colour-sheetcount and variants
 JOB_NAME_PATTERN = re.compile(
     r'^(?P<job_initials>[^_]+)_(?P<customer_name>[^_]+)_(?:(?P<job_type>[^_]+)_)?\s*(?P<gsm>\d+)\s*gsm\s*_'
     r'(?P<side_mode>SS|DS)_(?P<lamination_type>[^_]+)_(?P<colour_spec>.+)-(?P<sheet_count>\d+)sheet(?:\.\w+)?$',
@@ -21,14 +21,82 @@ JOB_NAME_PATTERN = re.compile(
 
 
 def parse_in_job_name(job_name):
-    match = JOB_NAME_PATTERN.fullmatch(job_name.strip()) if job_name else None
-    if not match:
+    if not job_name or not str(job_name).strip():
         return {}
-    parsed = {key: value.strip() for key, value in match.groupdict().items() if value is not None}
-    parsed['gsm'] = int(parsed['gsm'])
-    parsed['sheet_count'] = int(parsed['sheet_count'])
-    parsed['side_mode'] = parsed['side_mode'].upper()
-    return parsed
+    raw = re.sub(r'\.[a-zA-Z0-9]{2,5}$', '', str(job_name).strip())
+    if '_' not in raw:
+        return {}
+
+    parts = [p.strip() for p in raw.split('_')]
+    non_empty = [p for p in parts if p]
+    if len(non_empty) < 2:
+        return {}
+
+    res = {}
+    res['job_initials'] = non_empty[0]
+    res['customer_name'] = non_empty[1]
+
+    remaining = non_empty[2:]
+    unclaimed = []
+
+    for p in remaining:
+        m_qty = re.fullmatch(r'(\d+)\s*nos?', p, re.I)
+        if m_qty:
+            res['quantity'] = int(m_qty.group(1))
+            continue
+
+        m_sht = re.fullmatch(r'(\d+)\s*sheets?', p, re.I)
+        if m_sht:
+            res['sheet_count'] = int(m_sht.group(1))
+            continue
+
+        m_side = re.fullmatch(r'(SS|DS)', p, re.I)
+        if m_side:
+            res['side_mode'] = m_side.group(1).upper()
+            continue
+
+        m_gsm = re.fullmatch(r'(\d+)\s*gsm', p, re.I)
+        if m_gsm:
+            res['gsm'] = int(m_gsm.group(1))
+            continue
+
+        m_col_sht = re.fullmatch(r'(\d+\+\d+|cmyk|multi)-(\d+)(?:sheets?)?', p, re.I)
+        if m_col_sht:
+            res['colour_spec'] = m_col_sht.group(1)
+            res['sheet_count'] = int(m_col_sht.group(2))
+            continue
+
+        m_col = re.fullmatch(r'(\d+\+\d+)', p)
+        if m_col:
+            res['colour_spec'] = m_col.group(1)
+            continue
+
+        m_lam = re.search(r'\b(matt|gloss|velvet|thermal|sparkle|bop|lami|lamination)\b', p, re.I)
+        if m_lam:
+            res['lamination_type'] = p
+            continue
+
+        unclaimed.append(p)
+
+    for p in unclaimed:
+        if 'gsm' not in res and re.fullmatch(r'\d{2,4}', p):
+            res['gsm'] = int(p)
+        elif 'paper_type' not in res and ('gold' in p.lower() or 'met' in p.lower() or 'paper' in p.lower() or 'board' in p.lower() or 'gsm' not in res):
+            res['paper_type'] = p
+        elif 'lamination_type' not in res and 'none' in p.lower():
+            res['lamination_type'] = 'None'
+        elif 'lamination_type' not in res and 'side_mode' in res and 'colour_spec' in res:
+            res['lamination_type'] = p
+        elif 'remarks' not in res:
+            res['remarks'] = p
+
+    if 'side_mode' not in res and 'colour_spec' in res:
+        m_split = re.match(r'(\d+)\+(\d+)', res['colour_spec'])
+        if m_split:
+            back = int(m_split.group(2))
+            res['side_mode'] = 'DS' if back > 0 else 'SS'
+
+    return res
 
 
 def initialize_job_finance(values, *, vendor=False):

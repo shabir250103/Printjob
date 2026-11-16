@@ -1274,3 +1274,61 @@ class AuthenticationApiTests(APITestCase):
         self.assertIn('machine_counters', res.data)
         self.assertIn('cash_accounts', res.data)
 
+    def test_parse_in_job_name_variations(self):
+        from .services import parse_in_job_name
+        
+        # Example 1: Tony_Seemandham_ gold met_1+17___18Sheet __70nos
+        p1 = parse_in_job_name('Tony_Seemandham_ gold met_1+17___18Sheet __70nos')
+        self.assertEqual(p1['job_initials'], 'Tony')
+        self.assertEqual(p1['customer_name'], 'Seemandham')
+        self.assertEqual(p1['paper_type'], 'gold met')
+        self.assertEqual(p1['colour_spec'], '1+17')
+        self.assertEqual(p1['side_mode'], 'DS')
+        self.assertEqual(p1['sheet_count'], 18)
+        self.assertEqual(p1['quantity'], 70)
+
+        # Example 2: jp_A&G_300gsm_DS_Matt lami_1+3
+        p2 = parse_in_job_name('jp_A&G_300gsm_DS_Matt lami_1+3')
+        self.assertEqual(p2['job_initials'], 'jp')
+        self.assertEqual(p2['customer_name'], 'A&G')
+        self.assertEqual(p2['gsm'], 300)
+        self.assertEqual(p2['side_mode'], 'DS')
+        self.assertEqual(p2['lamination_type'], 'Matt lami')
+        self.assertEqual(p2['colour_spec'], '1+3')
+
+        # Example 3: jp_Earthytones_170gsm_SS__27+1
+        p3 = parse_in_job_name('jp_Earthytones_170gsm_SS__27+1')
+        self.assertEqual(p3['job_initials'], 'jp')
+        self.assertEqual(p3['customer_name'], 'Earthytones')
+        self.assertEqual(p3['gsm'], 170)
+        self.assertEqual(p3['side_mode'], 'SS')
+        self.assertEqual(p3['colour_spec'], '27+1')
+
+        # Example 4: Tony_R star_300gsm_SS_1+14
+        p4 = parse_in_job_name('Tony_R star_300gsm_SS_1+14')
+        self.assertEqual(p4['job_initials'], 'Tony')
+        self.assertEqual(p4['customer_name'], 'R star')
+        self.assertEqual(p4['gsm'], 300)
+        self.assertEqual(p4['side_mode'], 'SS')
+        self.assertEqual(p4['colour_spec'], '1+14')
+
+        # Example 5: jp_A&G_300gsm_SS_5sheets_lamination_cutting
+        p5 = parse_in_job_name('jp_A&G_300gsm_SS_5sheets_lamination_cutting')
+        self.assertEqual(p5['job_initials'], 'jp')
+        self.assertEqual(p5['customer_name'], 'A&G')
+        self.assertEqual(p5['gsm'], 300)
+        self.assertEqual(p5['side_mode'], 'SS')
+        self.assertEqual(p5['sheet_count'], 5)
+        self.assertEqual(p5['lamination_type'], 'lamination')
+
+        # Classic format: bas_Naidu_300gsm_DS_Matt_1+7-8sheet
+        p6 = parse_in_job_name('bas_Naidu_300gsm_DS_Matt_1+7-8sheet')
+        self.assertEqual(p6['job_initials'], 'bas')
+        self.assertEqual(p6['customer_name'], 'Naidu')
+        self.assertEqual(p6['gsm'], 300)
+        self.assertEqual(p6['side_mode'], 'DS')
+        self.assertEqual(p6['lamination_type'], 'Matt')
+        self.assertEqual(p6['colour_spec'], '1+7')
+        self.assertEqual(p6['sheet_count'], 8)
+
+
