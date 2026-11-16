@@ -24,48 +24,68 @@ type Options = {
 type DailyMachineCounter = { machine_id: number; morning_count: number | null; job_clicks_booked: number }
 type Form = Record<string, string | boolean | number[]>
 
-// Format: initials_customer_gsm_SS-or-DS_lamination_colour-sheetcount
+// Format: designer+customername+boardtype gsm,+ss/ds+matt lami+1+3 (or _ delimited)
 export function parseInJobName(jobName: string): Record<string, string> | null {
   if (!jobName || !jobName.trim()) return null
-  const raw = jobName.trim().replace(/\.[a-zA-Z0-9]{2,5}$/, '')
-  if (!raw.includes('_')) return null
+  let raw = jobName.trim().replace(/\.[a-zA-Z0-9]{2,5}$/, '')
+  if (!raw.includes('_') && !raw.includes('+') && !raw.includes(',')) return null
 
-  const parts = raw.split('_').map((p) => p.trim())
-  const nonEmpty = parts.filter(Boolean)
-  if (nonEmpty.length < 2) return null
+  // Clean explanatory annotations like (for laminatin) or (sheet count)
+  raw = raw.replace(/\(\s*(?:for\s+)?laminat\w*\s*\)/gi, '')
+  raw = raw.replace(/\(\s*sheet\s*count\s*\)/gi, '')
+  raw = raw.replace(/\(\s*sheets?\s*\)/gi, '')
+
+  // Protect arithmetic plus like 1+3 or 1 + 3 (also 1+7-8sheet)
+  const masked = raw.replace(/(\d+)\s*\+\s*(\d+)/g, (_m, g1, g2) => `${g1}@@@PLUS@@@${g2}`)
+
+  // First split on explicit delimiters [_,+,]+
+  const parts = masked.split(/[\s_,+]*[_,+][\s_,+]*/).map((p) => p.trim()).filter(Boolean)
+
+  // Further split if a part contains both text and trailing 1+3 or sheets/nos
+  const refined: string[] = []
+  for (const p of parts) {
+    const sub = p.split(/(?<=[a-zA-Z])\s+(?=\d+@@@PLUS@@@\d+|\d+\s*sheets?|\d+\s*nos?)/i)
+    for (const s of sub) {
+      const sClean = s.trim()
+      if (sClean) {
+        refined.push(sClean.replace(/@@@PLUS@@@/g, '+'))
+      }
+    }
+  }
+
+  if (refined.length < 2) return null
 
   const res: Record<string, string> = {}
-  res.job_initials = nonEmpty[0]
-  res.customer_name = nonEmpty[1]
+  res.job_initials = refined[0]
+  res.customer_name = refined[1]
 
-  const remaining = nonEmpty.slice(2)
+  const remaining = refined.slice(2)
   const unclaimed: string[] = []
 
   for (const p of remaining) {
+    // Quantity (e.g. 70nos)
     const mQty = p.match(/^(\d+)\s*nos?$/i)
     if (mQty) {
       res.quantity = mQty[1]
       continue
     }
 
+    // Sheet count explicit (e.g. 18Sheet, 5sheets)
     const mSht = p.match(/^(\d+)\s*sheets?$/i)
     if (mSht) {
       res.sheet_count = mSht[1]
       continue
     }
 
-    const mSide = p.match(/^(SS|DS)$/i)
+    // Side mode (e.g. SS, DS, ss/ds, single side, double side)
+    const mSide = p.match(/^(SS|DS|single\s*side|double\s*side|ss\/ds)$/i)
     if (mSide) {
-      res.side_mode = mSide[1].toUpperCase()
+      const val = mSide[1].toUpperCase()
+      res.side_mode = val.includes('DS') && !val.includes('SS') ? 'DS' : 'SS'
       continue
     }
 
-    const mGsm = p.match(/^(\d+)\s*gsm$/i)
-    if (mGsm) {
-      res.gsm = mGsm[1]
-      continue
-    }
-
+    // Combined colour and sheets: 1+7-8sheet
     const mColSht = p.match(/^(\d+\+\d+|cmyk|multi)-(\d+)(?:sheets?)?$/i)
     if (mColSht) {
       res.colour_spec = mColSht[1]
@@ -73,15 +93,44 @@ export function parseInJobName(jobName: string): Record<string, string> | null {
       continue
     }
 
-    const mCol = p.match(/^(\d+\+\d+)$/)
+    // Colour / sheet sum: 1+3 or 1+17 or 1+3 sheets
+    const mCol = p.match(/^(\d+)\+(\d+)(?:\s*sheets?)?$/i)
     if (mCol) {
-      res.colour_spec = mCol[1]
+      const front = parseInt(mCol[1], 10)
+      const back = parseInt(mCol[2], 10)
+      res.colour_spec = `${front}+${back}`
+      if (!res.sheet_count) {
+        res.sheet_count = String(front + back)
+      }
       continue
     }
 
-    const mLam = p.match(/\b(matt|gloss|velvet|thermal|sparkle|bop|lami|lamination)\b/i)
+    // Lamination
+    const mLam = p.match(/\b(matt|gloss|velvet|thermal|sparkle|bop|bopp|lami|lamination)\b/i)
     if (mLam) {
       res.lamination_type = p
+      continue
+    }
+
+    // Combined paper type and GSM with 'gsm' (e.g. 'gold met 300gsm', 'art board 300gsm', '300gsm')
+    const mGsmInP = p.match(/\b(\d{2,4})\s*gsm\b/i)
+    if (mGsmInP) {
+      res.gsm = mGsmInP[1]
+      const remainder = p.replace(/\b\d{2,4}\s*gsm\b/gi, '').trim()
+      if (remainder && !res.paper_type) {
+        res.paper_type = remainder
+      }
+      continue
+    }
+
+    // Paper words with numbers without 'gsm' (e.g. 'gold met 300', 'art board 350')
+    const mNum = p.match(/\b(\d{2,4})\b/)
+    if (mNum && /(gold|met|paper|board|bond|vellum|sheet|art|kraft|card)/i.test(p)) {
+      res.gsm = mNum[1]
+      const remainder = p.replace(/\b\d{2,4}\b/g, '').trim()
+      if (remainder && !res.paper_type) {
+        res.paper_type = remainder
+      }
       continue
     }
 
@@ -91,7 +140,10 @@ export function parseInJobName(jobName: string): Record<string, string> | null {
   for (const p of unclaimed) {
     if (!res.gsm && /^\d{2,4}$/.test(p)) {
       res.gsm = p
-    } else if (!res.paper_type && (/gold/i.test(p) || /met/i.test(p) || /paper/i.test(p) || /board/i.test(p) || !res.gsm)) {
+    } else if (!res.paper_type && /(gold|met|paper|board|bond|vellum|sheet|art|kraft|card|boardtype)/i.test(p)) {
+      const pClean = p.replace(/\bgsm\b/gi, '').trim()
+      res.paper_type = pClean || p
+    } else if (!res.paper_type && !res.gsm) {
       res.paper_type = p
     } else if (!res.lamination_type && /none/i.test(p)) {
       res.lamination_type = 'None'
@@ -114,8 +166,8 @@ export function parseInJobName(jobName: string): Record<string, string> | null {
 }
 
 const PARSED_FIELD_LABELS: Record<string, string> = {
-  job_initials: 'Initials', customer_name: 'Customer', job_type: 'Job Type', gsm: 'GSM',
-  paper_type: 'Paper', side_mode: 'Side', lamination_type: 'Lamination', colour_spec: 'Colour',
+  job_initials: 'Designer / Initials', customer_name: 'Customer', job_type: 'Job Type', gsm: 'GSM',
+  paper_type: 'Board / Paper', side_mode: 'Side', lamination_type: 'Lamination', colour_spec: 'Colour',
   sheet_count: 'Sheets', quantity: 'Quantity', stock_item: 'Stock', remarks: 'Remarks',
 }
 const numericFields = new Set(['gsm', 'quantity', 'sheet_count', 'wastage_count', 'total_amount', 'advance', 'expenses', 'gst_percent'])
@@ -266,6 +318,21 @@ export function ConvertToInJobDialog({ row, pending, error, page = false, standa
             }
           }
         }
+        // Auto-select designer if initials/designer matches
+        if (parsed.job_initials && !touched.current.has('designer')) {
+          const init = parsed.job_initials.trim().toLowerCase()
+          const matchUser = (options.data?.users || []).find((u) => {
+            const un = (u.username || '').toLowerCase()
+            const fn = (u.first_name || '').toLowerCase()
+            const ln = (u.last_name || '').toLowerCase()
+            const full = `${fn} ${ln}`.trim()
+            const initials = `${fn[0] || ''}${ln[0] || ''}`.toLowerCase()
+            return un === init || fn === init || ln === init || full === init || (initials && initials === init)
+          })
+          if (matchUser) {
+            next.designer = String(matchUser.id)
+          }
+        }
       }
       return next
     })
@@ -387,7 +454,7 @@ export function ConvertToInJobDialog({ row, pending, error, page = false, standa
                 parsedFields
                   ? '✓ Auto-filled from filename — edit any field below to override'
                   : !form.job_name
-                    ? 'Format: initials_customer_gsm_SS-or-DS_lamination_colour-sheetcount'
+                    ? 'Format: designer+customername+boardtype gsm+ss/ds+lamination+1+3 (supports + or _)'
                     : 'No pattern match — fill fields manually below'
               }
             />

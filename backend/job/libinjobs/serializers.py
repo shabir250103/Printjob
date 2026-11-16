@@ -464,6 +464,18 @@ class InJobSerializer(serializers.ModelSerializer):
             if stock:
                 values.update(paper_type=stock.name, gsm=stock.gsm, paper_size=stock.size)
             values.update({key: value for key, value in validated_data.items() if value is not None and value != ''})
+            if not values.get('designer') and values.get('job_initials'):
+                from django.contrib.auth import get_user_model
+                from django.db.models import Q
+                User = get_user_model()
+                init = str(values['job_initials']).strip().lower()
+                matched_designer = User.objects.filter(is_active=True).filter(
+                    Q(username__iexact=init) |
+                    Q(first_name__iexact=init) |
+                    Q(last_name__iexact=init)
+                ).first()
+                if matched_designer:
+                    values['designer'] = matched_designer
             if not values.get('machine'):
                 values['machine'] = Machine.active.filter(is_default=True).first()
             values['click_count'] = InJob.calculate_click_count(values.get('sheet_count', 0), values.get('side_mode', 'SS'))

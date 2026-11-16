@@ -24,64 +24,113 @@ def parse_in_job_name(job_name):
     if not job_name or not str(job_name).strip():
         return {}
     raw = re.sub(r'\.[a-zA-Z0-9]{2,5}$', '', str(job_name).strip())
-    if '_' not in raw:
+    if '_' not in raw and '+' not in raw and ',' not in raw:
         return {}
 
-    parts = [p.strip() for p in raw.split('_')]
-    non_empty = [p for p in parts if p]
-    if len(non_empty) < 2:
+    # Clean explanatory annotations like (for laminatin) or (sheet count)
+    raw = re.sub(r'\(\s*(?:for\s+)?laminat\w*\s*\)', '', raw, flags=re.I)
+    raw = re.sub(r'\(\s*sheet\s*count\s*\)', '', raw, flags=re.I)
+    raw = re.sub(r'\(\s*sheets?\s*\)', '', raw, flags=re.I)
+
+    # Protect arithmetic plus like 1+3 or 1 + 3 (also 1+7-8sheet)
+    def mask_plus(m):
+        return f"{m.group(1)}@@@PLUS@@@{m.group(2)}"
+    masked = re.sub(r'(\d+)\s*\+\s*(\d+)', mask_plus, raw)
+
+    # First split on explicit delimiters [_,+,]+
+    parts = re.split(r'[\s_,+]*[_,+][\s_,+]*', masked)
+    parts = [p.strip() for p in parts if p.strip()]
+
+    # Further split if a part contains both text and trailing 1+3 or sheets/nos
+    refined = []
+    for p in parts:
+        sub = re.split(r'(?<=[a-zA-Z])\s+(?=\d+@@@PLUS@@@\d+|\d+\s*sheets?|\d+\s*nos?)', p, flags=re.I)
+        for s in sub:
+            s_clean = s.strip()
+            if s_clean:
+                refined.append(s_clean.replace('@@@PLUS@@@', '+'))
+
+    if len(refined) < 2:
         return {}
 
     res = {}
-    res['job_initials'] = non_empty[0]
-    res['customer_name'] = non_empty[1]
+    res['job_initials'] = refined[0]
+    res['customer_name'] = refined[1]
 
-    remaining = non_empty[2:]
+    remaining = refined[2:]
     unclaimed = []
 
     for p in remaining:
+        # Quantity (e.g. 70nos)
         m_qty = re.fullmatch(r'(\d+)\s*nos?', p, re.I)
         if m_qty:
             res['quantity'] = int(m_qty.group(1))
             continue
 
+        # Sheet count explicit (e.g. 18Sheet, 5sheets)
         m_sht = re.fullmatch(r'(\d+)\s*sheets?', p, re.I)
         if m_sht:
             res['sheet_count'] = int(m_sht.group(1))
             continue
 
-        m_side = re.fullmatch(r'(SS|DS)', p, re.I)
+        # Side mode (e.g. SS, DS, ss/ds, single side, double side)
+        m_side = re.fullmatch(r'(SS|DS|single\s*side|double\s*side|ss/ds)', p, re.I)
         if m_side:
-            res['side_mode'] = m_side.group(1).upper()
+            val = m_side.group(1).upper()
+            res['side_mode'] = 'DS' if 'DS' in val and 'SS' not in val else 'SS'
             continue
 
-        m_gsm = re.fullmatch(r'(\d+)\s*gsm', p, re.I)
-        if m_gsm:
-            res['gsm'] = int(m_gsm.group(1))
-            continue
-
+        # Combined colour and sheets: 1+7-8sheet
         m_col_sht = re.fullmatch(r'(\d+\+\d+|cmyk|multi)-(\d+)(?:sheets?)?', p, re.I)
         if m_col_sht:
             res['colour_spec'] = m_col_sht.group(1)
             res['sheet_count'] = int(m_col_sht.group(2))
             continue
 
-        m_col = re.fullmatch(r'(\d+\+\d+)', p)
+        # Colour / sheet sum: 1+3 or 1+17 or 1+3 sheets
+        m_col = re.fullmatch(r'(\d+)\+(\d+)(?:\s*sheets?)?', p, re.I)
         if m_col:
-            res['colour_spec'] = m_col.group(1)
+            front = int(m_col.group(1))
+            back = int(m_col.group(2))
+            res['colour_spec'] = f'{front}+{back}'
+            if 'sheet_count' not in res:
+                res['sheet_count'] = front + back
             continue
 
-        m_lam = re.search(r'\b(matt|gloss|velvet|thermal|sparkle|bop|lami|lamination)\b', p, re.I)
+        # Lamination
+        m_lam = re.search(r'\b(matt|gloss|velvet|thermal|sparkle|bop|bopp|lami|lamination)\b', p, re.I)
         if m_lam:
             res['lamination_type'] = p
+            continue
+
+        # Combined paper type and GSM with 'gsm' (e.g. 'gold met 300gsm', 'art board 300gsm', '300gsm')
+        m_gsm_in_p = re.search(r'\b(\d{2,4})\s*gsm\b', p, re.I)
+        if m_gsm_in_p:
+            res['gsm'] = int(m_gsm_in_p.group(1))
+            remainder = re.sub(r'\b\d{2,4}\s*gsm\b', '', p, flags=re.I).strip()
+            if remainder and 'paper_type' not in res:
+                res['paper_type'] = remainder
+            continue
+
+        # Paper words with numbers without 'gsm' (e.g. 'gold met 300', 'art board 350')
+        m_num = re.search(r'\b(\d{2,4})\b', p)
+        if m_num and any(w in p.lower() for w in ('gold', 'met', 'paper', 'board', 'bond', 'vellum', 'sheet', 'art', 'kraft', 'card')):
+            res['gsm'] = int(m_num.group(1))
+            remainder = re.sub(r'\b\d{2,4}\b', '', p).strip()
+            if remainder and 'paper_type' not in res:
+                res['paper_type'] = remainder
             continue
 
         unclaimed.append(p)
 
     for p in unclaimed:
+        # Check for numeric GSM in unclaimed
         if 'gsm' not in res and re.fullmatch(r'\d{2,4}', p):
             res['gsm'] = int(p)
-        elif 'paper_type' not in res and ('gold' in p.lower() or 'met' in p.lower() or 'paper' in p.lower() or 'board' in p.lower() or 'gsm' not in res):
+        elif 'paper_type' not in res and any(w in p.lower() for w in ('gold', 'met', 'paper', 'board', 'bond', 'vellum', 'sheet', 'art', 'kraft', 'card', 'boardtype')):
+            p_clean = re.sub(r'\bgsm\b', '', p, flags=re.I).strip()
+            res['paper_type'] = p_clean or p
+        elif 'paper_type' not in res and 'gsm' not in res:
             res['paper_type'] = p
         elif 'lamination_type' not in res and 'none' in p.lower():
             res['lamination_type'] = 'None'
@@ -192,6 +241,18 @@ def convert_pipeline_to_in_job(pipeline_job, user, **overrides):
     if stock:
         values.update(paper_type=stock.name, gsm=stock.gsm, paper_size=stock.size)
     values.update({key: value for key, value in overrides.items() if value is not None and value != ''})
+    if not values.get('designer') and values.get('job_initials'):
+        from django.contrib.auth import get_user_model
+        from django.db.models import Q
+        User = get_user_model()
+        init = str(values['job_initials']).strip().lower()
+        matched_designer = User.objects.filter(is_active=True).filter(
+            Q(username__iexact=init) |
+            Q(first_name__iexact=init) |
+            Q(last_name__iexact=init)
+        ).first()
+        if matched_designer:
+            values['designer'] = matched_designer
     if not values.get('machine'):
         values['machine'] = Machine.active.filter(is_default=True).first()
     values['click_count'] = InJob.calculate_click_count(values.get('sheet_count', 0), values.get('side_mode', 'SS'))
