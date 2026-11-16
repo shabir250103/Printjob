@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, TextField } from '@mui/material'
 import { api, apiError } from '../api/client'
@@ -29,6 +29,37 @@ export function InJobQuickAddDialog({ target, onClose, onCreated }: {
 }) {
   const [values, setValues] = useState<Record<string, string>>({})
   const [error, setError] = useState('')
+  const [newCategoryModalOpen, setNewCategoryModalOpen] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [newCategoryError, setNewCategoryError] = useState('')
+  const [savingCategory, setSavingCategory] = useState(false)
+
+  const stockCategories = useQuery({
+    queryKey: ['stock-categories'],
+    enabled: target === 'stock_item',
+    queryFn: async () => {
+      const res = await api.get<Array<{ id: number; name: string }> | { results: Array<{ id: number; name: string }> }>('/stock-categories/')
+      return Array.isArray(res.data) ? res.data : (res.data.results || [])
+    },
+  })
+
+  const categoryOptions = useMemo(() => {
+    const list: string[] = []
+    const defaults = ['Paper', 'Toner', 'Ink', 'Finishing Material', 'Packaging', 'Other']
+    defaults.forEach((d) => list.push(d))
+    if (stockCategories.data) {
+      stockCategories.data.forEach((c) => {
+        if (c.name && !list.some((existing) => existing.toLowerCase() === c.name.toLowerCase())) {
+          list.push(c.name)
+        }
+      })
+    }
+    const currentVal = String(values.category || '')
+    if (currentVal && !list.some((existing) => existing.toLowerCase() === currentVal.toLowerCase())) {
+      list.push(currentVal)
+    }
+    return list
+  }, [stockCategories.data, values.category])
   const set = (name: string, value: string) => setValues((current) => ({ ...current, [name]: value }))
   const roles = useQuery({ queryKey: ['quick-add-roles'], queryFn: async () => (await api.get<Array<{ id: number; name: string; is_active: boolean; default_permissions: Record<string, boolean> }>>('/roles/')).data, enabled: target === 'assigned_users' || target === 'designer' })
   const departments = useQuery({ queryKey: ['quick-add-departments'], queryFn: async () => (await api.get<Array<{ id: number; name: string }>>('/departments/')).data, enabled: target === 'assigned_users' || target === 'designer' })
@@ -50,7 +81,7 @@ export function InJobQuickAddDialog({ target, onClose, onCreated }: {
   })
   const input = (name: string, label: string, required = false, props: Record<string, unknown> = {}) => <TextField key={name} label={label} value={values[name] || ''} onChange={(event) => set(name, event.target.value)} required={required} size="small" fullWidth {...props} />
   const user = target === 'assigned_users' || target === 'designer'
-  return <Dialog open onClose={create.isPending ? undefined : onClose} fullWidth maxWidth="sm" aria-labelledby="quick-add-title">
+  const dialog = <Dialog open onClose={create.isPending ? undefined : onClose} fullWidth maxWidth="sm" aria-labelledby="quick-add-title">
     <Box component="form" onSubmit={(event: React.FormEvent) => { event.preventDefault(); setError(''); create.mutate() }}>
       <DialogTitle id="quick-add-title">Add new {titles[target]}</DialogTitle>
       <DialogContent dividers sx={{ display: 'grid', gap: 2, pt: '20px !important' }}>
@@ -63,9 +94,34 @@ export function InJobQuickAddDialog({ target, onClose, onCreated }: {
         </>}
         {(target === 'customer' || target === 'everyone_in_department' || target === 'stock_item' || target === 'printer' || target === 'machine') && input('name', 'Name', true)}
         {target === 'customer' && input('mobile', 'Contact number')}
-        {target === 'stock_item' && <><TextField select label="Category" value={values.category || 'paper'} onChange={(event) => set('category', event.target.value)} size="small" fullWidth>
-          {[['paper', 'Paper'], ['toner', 'Toner'], ['ink', 'Ink'], ['finishing', 'Finishing Material'], ['packaging', 'Packaging'], ['other', 'Other']].map(([value, label]) => <MenuItem key={value} value={value}>{label}</MenuItem>)}
-        </TextField>{input('gsm', 'GSM', false, { type: 'number', inputProps: { min: 0 } })}{input('size', 'Size')}</>}
+        {target === 'stock_item' && <>
+          <TextField
+            select
+            label="Category"
+            value={values.category || 'Paper'}
+            onChange={(event) => {
+              if (event.target.value === '__add_new__') {
+                setNewCategoryName('')
+                setNewCategoryError('')
+                setNewCategoryModalOpen(true)
+              } else {
+                set('category', event.target.value)
+              }
+            }}
+            size="small"
+            fullWidth
+            helperText={stockCategories.isLoading ? 'Loading categories…' : undefined}
+          >
+            {categoryOptions.map((cat) => (
+              <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+            ))}
+            <MenuItem value="__add_new__" sx={{ fontWeight: 700, color: 'primary.main' }}>
+              ＋ Add new category…
+            </MenuItem>
+          </TextField>
+          {input('gsm', 'GSM', false, { type: 'number', inputProps: { min: 0 } })}
+          {input('size', 'Size')}
+        </>}
         {(target === 'printer' || target === 'machine') && input('code', 'Machine code', true)}
         {target === 'pipeline_job' && <>{input('client_name', 'Client name', true)}{input('job_type', 'Job type', true)}{input('job_date', 'Job date', false, { type: 'date', slotProps: { inputLabel: { shrink: true } } })}{input('quantity', 'Quantity', false, { type: 'number', inputProps: { min: 1 }, helperText: 'Defaults to 1.' })}{input('contact_number', 'Contact number')}</>}
         {user && <>
@@ -85,4 +141,62 @@ export function InJobQuickAddDialog({ target, onClose, onCreated }: {
       <DialogActions><Button onClick={onClose} disabled={create.isPending}>Cancel</Button><Button type="submit" variant="contained" disabled={create.isPending || (user && (roles.isLoading || eligibleRoles.length === 0))}>{create.isPending ? 'Saving…' : 'Save and select'}</Button></DialogActions>
     </Box>
   </Dialog>
+
+  const newCategoryModal = (
+    <Dialog
+      open={newCategoryModalOpen}
+      onClose={() => !savingCategory && setNewCategoryModalOpen(false)}
+      maxWidth="xs"
+      fullWidth
+    >
+      <Box
+        component="form"
+        onSubmit={async (e: React.FormEvent) => {
+          e.preventDefault()
+          const trimmed = newCategoryName.trim()
+          if (!trimmed) return
+          try {
+            setSavingCategory(true)
+            setNewCategoryError('')
+            await api.post('/stock-categories/', { name: trimmed })
+            await stockCategories.refetch()
+            set('category', trimmed)
+            setNewCategoryModalOpen(false)
+          } catch (err) {
+            setNewCategoryError(apiError(err))
+          } finally {
+            setSavingCategory(false)
+          }
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 800 }}>Create New Stock Category</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: '10px !important' }}>
+          {newCategoryError && <Alert severity="error">{newCategoryError}</Alert>}
+          <TextField
+            autoFocus
+            label="Category Name"
+            value={newCategoryName}
+            onChange={(e) => setNewCategoryName(e.target.value)}
+            required
+            fullWidth
+            size="small"
+            placeholder="e.g. Stickers, Board, Vinyl"
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setNewCategoryModalOpen(false)} disabled={savingCategory}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="contained" disabled={savingCategory || !newCategoryName.trim()}>
+            {savingCategory ? 'Creating…' : 'Create Category'}
+          </Button>
+        </DialogActions>
+      </Box>
+    </Dialog>
+  )
+
+  return <>
+    {dialog}
+    {newCategoryModal}
+  </>
 }

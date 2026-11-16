@@ -20,7 +20,7 @@ from .models import (
     CashAccount, CashTransaction, CashTransfer, Customer, CustomerPayment,
     CustomerType, Delivery, Department, FollowUp, InJob, InJobDropdownOption, Invoice, JobDocument, Machine,
     MachineCounter, MachineStatusHistory, ModulePermissionOverride, Notification,
-    OutJob, PipelineJob, Role, StockItem, StockMovement, UserProfile,
+    OutJob, PipelineJob, Role, StockCategory, StockItem, StockMovement, UserProfile,
     VendorPayment, WastageRecord,
 )
 from .serializers import (
@@ -53,6 +53,7 @@ from .serializers import (
     PipelineJobSerializer,
     PipelineToInJobSerializer,
     PipelineToOutJobSerializer,
+    StockCategorySerializer,
     StockItemSerializer,
     StockAdjustmentSerializer,
     StockMovementSerializer,
@@ -246,6 +247,24 @@ class MachineViewSet(SearchableModelViewSet):
             detail = getattr(exc, 'message_dict', None) or {'detail': exc.messages}
             return Response(detail, status=status.HTTP_400_BAD_REQUEST)
         return Response(MachineStatusHistorySerializer(history).data)
+
+
+class StockCategoryViewSet(SearchableModelViewSet):
+    queryset = StockCategory.objects.filter(is_active=True)
+    serializer_class = StockCategorySerializer
+    search_fields = ('name',)
+
+    def list(self, request, *args, **kwargs):
+        defaults = ['Paper', 'Toner', 'Ink', 'Finishing Material', 'Packaging', 'Other']
+        for cat in defaults:
+            StockCategory.objects.get_or_create(name=cat)
+        for cat in StockItem.objects.values_list('category', flat=True).distinct():
+            if cat:
+                StockCategory.objects.get_or_create(name=cat)
+        return super().list(request, *args, **kwargs)
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
 
 
 class StockItemViewSet(SearchableModelViewSet):

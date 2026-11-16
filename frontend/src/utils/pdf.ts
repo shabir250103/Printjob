@@ -5,6 +5,7 @@
  */
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { resolveMediaUrl } from '../api/client'
 
 export interface CompanyInfo {
   company_name: string
@@ -344,8 +345,8 @@ export async function generateInvoicePDF(invoiceData: InvoiceData): Promise<void
   const logoUrl = company?.company_logo_url || invoiceData.company_logo_url || ''
   const sigUrl = company?.digital_signature_url || invoiceData.signature_url || ''
   const [logoBase64, sigBase64] = await Promise.all([
-    logoUrl ? loadImageAsBase64(logoUrl) : Promise.resolve(null),
-    sigUrl ? loadImageAsBase64(sigUrl) : Promise.resolve(null),
+    logoUrl ? loadImageAsBase64(resolveMediaUrl(logoUrl)) : Promise.resolve(null),
+    sigUrl ? loadImageAsBase64(resolveMediaUrl(sigUrl)) : Promise.resolve(null),
   ])
 
   // 1. Company header
@@ -464,8 +465,8 @@ export async function generateQuotationPDF(quotationData: QuotationData): Promis
   const logoUrl = company?.company_logo_url || ''
   const sigUrl = company?.digital_signature_url || ''
   const [logoBase64, sigBase64] = await Promise.all([
-    logoUrl ? loadImageAsBase64(logoUrl) : Promise.resolve(null),
-    sigUrl ? loadImageAsBase64(sigUrl) : Promise.resolve(null),
+    logoUrl ? loadImageAsBase64(resolveMediaUrl(logoUrl)) : Promise.resolve(null),
+    sigUrl ? loadImageAsBase64(resolveMediaUrl(sigUrl)) : Promise.resolve(null),
   ])
 
   // Header

@@ -33,6 +33,7 @@ from .models import (
     OutJob,
     PaymentStatus,
     PipelineJob,
+    StockCategory,
     StockItem,
     StockMovement,
     Role,
@@ -170,8 +171,22 @@ class MachineSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class StockCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StockCategory
+        fields = ('id', 'name', 'is_active', 'created_at')
+        read_only_fields = ('created_at',)
+
+    def validate_name(self, value):
+        val = value.strip()
+        if not val:
+            raise serializers.ValidationError('Category name cannot be empty.')
+        return val
+
+
 class StockItemSerializer(serializers.ModelSerializer):
     is_low_stock = serializers.BooleanField(read_only=True)
+    category = serializers.CharField(max_length=100, default='Paper')
 
     class Meta:
         model = StockItem
@@ -180,6 +195,12 @@ class StockItemSerializer(serializers.ModelSerializer):
             'min_stock', 'unit', 'is_low_stock', 'is_active', 'created_at', 'updated_at',
         )
         read_only_fields = ('created_at', 'updated_at', 'is_low_stock')
+
+    def validate_category(self, value):
+        cat = (value or '').strip()
+        if cat:
+            StockCategory.objects.get_or_create(name=cat)
+        return cat or 'Paper'
 
     def validate(self, attrs):
         if self.instance and 'current_stock' in attrs and attrs['current_stock'] != self.instance.current_stock:

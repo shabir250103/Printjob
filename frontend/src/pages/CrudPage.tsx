@@ -33,6 +33,8 @@ import { resources } from '../config/resources'
 import type { ApiRecord, ColumnConfig, FieldConfig } from '../types'
 import { PageHeader } from '../components/PageHeader'
 import { RecordDialog } from '../components/RecordDialog'
+import { ConvertToInJobDialog } from '../components/ConvertToInJobDialog'
+import { OutJobForm } from '../components/OutJobForm'
 import { RecordPaymentDialog } from '../components/RecordPaymentDialog'
 import { InvoicePreviewDialog } from './InvoiceManagementPage'
 import { useAuth } from '../auth/AuthContext'
@@ -159,7 +161,7 @@ export function CrudPage({ resourceKey, embedded = false }: { resourceKey: strin
   const [outJobPriority, setOutJobPriority] = useState(searchParams.get('priority') || '')
   const [outJobStatus, setOutJobStatus] = useState(searchParams.get('status') || '')
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null)
-  const allowedFilters = ['status', 'priority', 'printing_status', 'finishing_status', 'payment_status', 'low_stock', 'job', 'account']
+  const allowedFilters = ['status', 'priority', 'printing_status', 'finishing_status', 'payment_status', 'low_stock', 'job', 'account', 'category']
   const filters = Object.fromEntries([...searchParams.entries()].filter(([key]) => allowedFilters.includes(key)))
   const filterKey = JSON.stringify(filters)
 
@@ -889,20 +891,41 @@ export function CrudPage({ resourceKey, embedded = false }: { resourceKey: strin
         <Typography color="text.secondary" fontSize={12} sx={{ mt: 1 }}>Only unaccepted pending jobs can be selected. Employees receive an offer and see full details only after accepting.</Typography>
         {bulkAssign.isError && <Alert severity="error" sx={{ mt: 1 }}>{apiError(bulkAssign.error)}</Alert>}
       </Card>}
-      <RecordDialog
-        open={dialogOpen}
-        title={editing ? `Edit ${config.singular}` : `New ${config.singular}`}
-        fields={editFields}
-        record={editing}
-        pending={mutation.isPending}
-        error={saveError}
-        onClose={() => setDialogOpen(false)}
-        onSave={(data) => mutation.mutate(data)}
-        onRecordPayment={canShowPayments ? (rec, target) => {
-          setDialogOpen(false)
-          setPaymentJob({ job: rec, kind: resourceKey === 'in-jobs' ? 'in' : 'out', initialTarget: target })
-        } : undefined}
-      />
+      {dialogOpen && resourceKey === 'in-jobs' ? (
+        <ConvertToInJobDialog
+          standalone
+          row={editing || undefined}
+          pending={mutation.isPending}
+          error={saveError}
+          onClose={() => { setDialogOpen(false); setEditing(null) }}
+          onSave={(data) => mutation.mutate(data)}
+        />
+      ) : dialogOpen && resourceKey === 'out-jobs' ? (
+        <OutJobForm
+          dialog
+          row={editing || undefined}
+          pending={mutation.isPending}
+          error={saveError}
+          onClose={() => { setDialogOpen(false); setEditing(null) }}
+          onSave={(data) => mutation.mutate(data)}
+        />
+      ) : (
+        <RecordDialog
+          open={dialogOpen}
+          title={editing ? `Edit ${config.singular}` : `New ${config.singular}`}
+          fields={editFields}
+          record={editing}
+          pending={mutation.isPending}
+          error={saveError}
+          onClose={() => { setDialogOpen(false); setEditing(null) }}
+          onSave={(data) => mutation.mutate(data)}
+          onRecordPayment={canShowPayments ? (rec, target) => {
+            setDialogOpen(false)
+            setEditing(null)
+            setPaymentJob({ job: rec, kind: resourceKey === 'in-jobs' ? 'in' : 'out', initialTarget: target })
+          } : undefined}
+        />
+      )}
       {workflowDefinition && <RecordDialog
         open={Boolean(workflow)}
         title={workflowDefinition.title}

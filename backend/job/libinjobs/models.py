@@ -140,6 +140,18 @@ class Machine(TimeStampedModel):
         return f'{self.code} - {self.name}'
 
 
+class StockCategory(TimeStampedModel):
+    name = models.CharField(max_length=100, unique=True, db_index=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        ordering = ('name',)
+
+    def __str__(self):
+        return self.name
+
+
 class StockItem(TimeStampedModel):
     class Category(models.TextChoices):
         PAPER = 'paper', 'Paper'
@@ -150,7 +162,7 @@ class StockItem(TimeStampedModel):
         OTHER = 'other', 'Other'
 
     name = models.CharField(max_length=200, db_index=True)
-    category = models.CharField(max_length=20, choices=Category.choices, default=Category.PAPER, db_index=True)
+    category = models.CharField(max_length=100, default=Category.PAPER, db_index=True)
     color = models.CharField(max_length=100, blank=True)
     gsm = models.PositiveIntegerField(null=True, blank=True)
     size = models.CharField(max_length=100, blank=True)

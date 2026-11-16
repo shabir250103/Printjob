@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Alert, Autocomplete, Box, Button, Card, Chip, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel,
@@ -43,6 +43,39 @@ export function RecordDialog({ open, title, fields: rawFields, record, pending, 
   const [values, setValues] = useState<Record<string, unknown>>({})
   const [previewUrl, setPreviewUrl] = useState('')
   const [previewError, setPreviewError] = useState('')
+  const [newCategoryModalOpen, setNewCategoryModalOpen] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [newCategoryError, setNewCategoryError] = useState('')
+  const [savingCategory, setSavingCategory] = useState(false)
+
+  const hasCategoryField = fields.some((f) => f.name === 'category' && (f.creatable || f.type === 'select'))
+
+  const stockCategories = useQuery({
+    queryKey: ['stock-categories'],
+    enabled: open && hasCategoryField,
+    queryFn: async () => {
+      const res = await api.get<Array<{ id: number; name: string }> | { results: Array<{ id: number; name: string }> }>('/stock-categories/')
+      return Array.isArray(res.data) ? res.data : (res.data.results || [])
+    },
+  })
+
+  const categoryOptions = useMemo(() => {
+    const list: string[] = []
+    const defaults = ['Paper', 'Toner', 'Ink', 'Finishing Material', 'Packaging', 'Other']
+    defaults.forEach((d) => list.push(d))
+    if (stockCategories.data) {
+      stockCategories.data.forEach((c) => {
+        if (c.name && !list.some((existing) => existing.toLowerCase() === c.name.toLowerCase())) {
+          list.push(c.name)
+        }
+      })
+    }
+    const currentVal = String(values.category || '')
+    if (currentVal && !list.some((existing) => existing.toLowerCase() === currentVal.toLowerCase())) {
+      list.push(currentVal)
+    }
+    return list
+  }, [stockCategories.data, values.category])
   const lookupEndpoints = [...new Set(fields.map((field) => field.lookupEndpoint).filter((endpoint): endpoint is string => Boolean(endpoint)))]
   const lookups = useQuery<Record<string, ApiRecord[]>>({
     queryKey: ['form-lookups', ...lookupEndpoints],
@@ -306,6 +339,33 @@ export function RecordDialog({ open, title, fields: rawFields, record, pending, 
               <MenuItem key={item.id} value={item.id}>{String(item[field.lookupLabel || 'name'] || `#${item.id}`)}</MenuItem>
             ))}
           </TextField>
+        ) : field.name === 'category' && (field.type === 'select' || field.creatable) ? (
+          <TextField
+            key={field.name}
+            label={field.label}
+            select
+            required={field.required}
+            value={String(values.category ?? 'Paper')}
+            onChange={(event) => {
+              if (event.target.value === '__add_new__') {
+                setNewCategoryName('')
+                setNewCategoryError('')
+                setNewCategoryModalOpen(true)
+              } else {
+                setValues((current) => ({ ...current, category: event.target.value }))
+              }
+            }}
+            helperText={stockCategories.isLoading ? 'Loading categories…' : undefined}
+          >
+            {categoryOptions.map((cat) => (
+              <MenuItem key={cat} value={cat}>
+                {cat}
+              </MenuItem>
+            ))}
+            <MenuItem value="__add_new__" sx={{ fontWeight: 700, color: 'primary.main' }}>
+              ＋ Add new category…
+            </MenuItem>
+          </TextField>
         ) : (
           <TextField
             key={field.name}
@@ -331,7 +391,72 @@ export function RecordDialog({ open, title, fields: rawFields, record, pending, 
         <Button type="submit" variant="contained" disabled={pending || lookups.isLoading || lookups.isError} startIcon={pending ? <CircularProgress size={16} color="inherit" /> : undefined}>Save</Button>
       </DialogActions>
   </>
-  return page
-    ? <Card component="form" onSubmit={submit} sx={{ maxWidth: 1160, mx: 'auto' }}>{contents}</Card>
-    : <Dialog open={open} onClose={pending ? undefined : onClose} fullWidth maxWidth="sm" component="form" onSubmit={submit}>{contents}</Dialog>
+
+  const newCategoryModal = (
+    <Dialog
+      open={newCategoryModalOpen}
+      onClose={() => !savingCategory && setNewCategoryModalOpen(false)}
+      maxWidth="xs"
+      fullWidth
+    >
+      <Box
+        component="form"
+        onSubmit={async (e: React.FormEvent) => {
+          e.preventDefault()
+          const trimmed = newCategoryName.trim()
+          if (!trimmed) return
+          try {
+            setSavingCategory(true)
+            setNewCategoryError('')
+            await api.post('/stock-categories/', { name: trimmed })
+            await stockCategories.refetch()
+            setValues((current) => ({ ...current, category: trimmed }))
+            setNewCategoryModalOpen(false)
+          } catch (err) {
+            setNewCategoryError(apiError(err))
+          } finally {
+            setSavingCategory(false)
+          }
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 800 }}>Create New Stock Category</DialogTitle>
+        <DialogContent sx={{ display: 'grid', gap: 2, pt: '10px !important' }}>
+          {newCategoryError && <Alert severity="error">{newCategoryError}</Alert>}
+          <TextField
+            autoFocus
+            label="Category Name"
+            value={newCategoryName}
+            onChange={(e) => setNewCategoryName(e.target.value)}
+            required
+            fullWidth
+            size="small"
+            placeholder="e.g. Stickers, Board, Vinyl"
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setNewCategoryModalOpen(false)} disabled={savingCategory}>
+            Cancel
+          </Button>
+          <Button type="submit" variant="contained" disabled={savingCategory || !newCategoryName.trim()}>
+            {savingCategory ? 'Creating…' : 'Create Category'}
+          </Button>
+        </DialogActions>
+      </Box>
+    </Dialog>
+  )
+
+  return (
+    <>
+      {page ? (
+        <Card component="form" onSubmit={submit} sx={{ maxWidth: 1160, mx: 'auto' }}>
+          {contents}
+        </Card>
+      ) : (
+        <Dialog open={open} onClose={pending ? undefined : onClose} fullWidth maxWidth="sm" component="form" onSubmit={submit}>
+          {contents}
+        </Dialog>
+      )}
+      {newCategoryModal}
+    </>
+  )
 }

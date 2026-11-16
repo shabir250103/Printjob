@@ -12,7 +12,7 @@ import DownloadRounded from '@mui/icons-material/DownloadRounded'
 import PrintRounded from '@mui/icons-material/PrintRounded'
 import CloseRounded from '@mui/icons-material/CloseRounded'
 import AddTaskRounded from '@mui/icons-material/AddTaskRounded'
-import { api, apiError } from '../api/client'
+import { api, apiError, resolveMediaUrl } from '../api/client'
 import { generateQuotationPDF, type QuotationData } from '../utils/pdf'
 
 type Item = { description: string; quantity: string; unit_price: string }
@@ -151,7 +151,7 @@ function QuotationPreviewModal({ quoteId, onClose }: { quoteId: number; onClose:
     </head><body>
       <div class="header">
         <div>
-          ${comp?.company_logo_url ? `<img class="logo" src="${comp.company_logo_url}" />` : ''}
+          ${comp?.company_logo_url ? `<img class="logo" src="${resolveMediaUrl(comp.company_logo_url)}" />` : ''}
           <div class="company-name">${companyName}</div>
           <div class="company-detail">${comp?.address || ''}</div>
           ${comp?.gstin ? `<div class="company-detail">GSTIN: ${comp.gstin}</div>` : ''}
@@ -196,7 +196,7 @@ function QuotationPreviewModal({ quoteId, onClose }: { quoteId: number; onClose:
       ${comp?.authorized_person_name ? `
       <div class="sig-box">
         <div class="sig-label">Authorised Signatory</div>
-        ${comp?.digital_signature_url ? `<img class="sig-img" src="${comp.digital_signature_url}" />` : '<div style="height:40px"></div>'}
+        ${comp?.digital_signature_url ? `<img class="sig-img" src="${resolveMediaUrl(comp.digital_signature_url)}" />` : '<div style="height:40px"></div>'}
         <div class="sig-line"></div>
         <div class="sig-name">${comp.authorized_person_name}</div>
         ${comp.authorized_person_designation ? `<div class="sig-desig">${comp.authorized_person_designation}</div>` : ''}
@@ -240,7 +240,7 @@ function QuotationPreviewModal({ quoteId, onClose }: { quoteId: number; onClose:
         <Box sx={{ bgcolor: '#17212b', color: 'white', p: 2.5, borderRadius: 2, mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <Box>
             {comp?.company_logo_url && (
-              <Box component="img" src={comp.company_logo_url} alt="Logo" sx={{ maxHeight: 50, maxWidth: 100, mb: 1, objectFit: 'contain' }} />
+              <Box component="img" src={resolveMediaUrl(comp.company_logo_url)} alt="Logo" sx={{ maxHeight: 50, maxWidth: 100, mb: 1, objectFit: 'contain' }} />
             )}
             <Typography fontWeight={800} fontSize={16}>{comp?.company_name || 'Libin Prints'}</Typography>
             {comp?.address && <Typography fontSize={11} color="rgba(255,255,255,0.65)" sx={{ whiteSpace: 'pre-line' }}>{comp.address}</Typography>}
@@ -297,7 +297,7 @@ function QuotationPreviewModal({ quoteId, onClose }: { quoteId: number; onClose:
           <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 2, textAlign: 'center' }}>
             <Typography fontSize={9} fontWeight={700} color="primary.main" textTransform="uppercase" mb={1}>Authorised Signatory</Typography>
             {comp?.digital_signature_url && (
-              <Box component="img" src={comp.digital_signature_url} alt="Signature" sx={{ maxWidth: 160, maxHeight: 60, mb: 1 }} />
+              <Box component="img" src={resolveMediaUrl(comp.digital_signature_url)} alt="Signature" sx={{ maxWidth: 160, maxHeight: 60, mb: 1 }} />
             )}
             <Divider />
             <Typography fontWeight={700} fontSize={12} mt={1}>{comp?.authorized_person_name || 'Authorised Person'}</Typography>

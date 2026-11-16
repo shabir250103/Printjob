@@ -192,16 +192,49 @@ const addNewValue = '__add_new__'
 
 function initialForm(row?: ApiRecord): Form {
   return {
-    job_name: '', job_initials: '', pipeline_job: '', customer: String(row?.customer || ''), customer_name: String(row?.client_name || ''),
-    contact_number: String(row?.contact_number || ''), priority: String(row?.priority || 'normal'), priority_option: '',
-    reference_type: 'regular', job_date: String(row?.job_date || new Date().toLocaleDateString('sv-SE')), job_type: String(row?.job_type || ''), file_name: '',
-    assigned_users: [], everyone_in_department: '', stock_item: '', paper_type: '', gsm: '', paper_size: '',
-    colour_spec: '', quantity: String(row?.quantity || 0), side_mode: 'SS', side_option: '', sheet_count: '0', wastage_count: '0',
-    printer: '', designer: String(row?.assigned_designer || ''),
-    machine: '', lamination_type: 'None', regular_finish: true, corner_finish: false, binding_method: 'None',
-    delivery_lp_office: false, delivery_porter: false, delivery_courier: false,
-    total_amount: '0', advance: '0', payment_method: 'Petty Cash', expenses: '0', payment_status: 'unpaid', payment_option: '', invoice_no: '',
-    gst_percent: '18', remarks: String(row?.remarks || ''),
+    job_name: String(row?.job_name || ''),
+    job_initials: String(row?.job_initials || ''),
+    pipeline_job: String(row?.pipeline_job || ''),
+    customer: String(row?.customer || ''),
+    customer_name: String(row?.customer_name || row?.client_name || ''),
+    contact_number: String(row?.contact_number || ''),
+    priority: String(row?.priority || 'normal'),
+    priority_option: String(row?.priority_option || ''),
+    reference_type: String(row?.reference_type || 'regular'),
+    job_date: String(row?.job_date || new Date().toLocaleDateString('sv-SE')),
+    job_type: String(row?.job_type || ''),
+    file_name: String(row?.file_name || ''),
+    assigned_users: Array.isArray(row?.assigned_users) ? (row.assigned_users as number[]) : [],
+    everyone_in_department: String(row?.everyone_in_department || ''),
+    stock_item: String(row?.stock_item || ''),
+    paper_type: String(row?.paper_type || ''),
+    gsm: row?.gsm != null ? String(row.gsm) : '',
+    paper_size: String(row?.paper_size || ''),
+    colour_spec: String(row?.colour_spec || ''),
+    quantity: String(row?.quantity ?? (row ? 0 : 0)),
+    side_mode: String(row?.side_mode || 'SS'),
+    side_option: String(row?.side_option || ''),
+    sheet_count: String(row?.sheet_count ?? '0'),
+    wastage_count: String(row?.wastage_count ?? '0'),
+    printer: String(row?.printer || ''),
+    designer: String(row?.designer || row?.assigned_designer || ''),
+    machine: String(row?.machine || ''),
+    lamination_type: String(row?.lamination_type || 'None'),
+    regular_finish: row?.regular_finish != null ? Boolean(row.regular_finish) : true,
+    corner_finish: Boolean(row?.corner_finish),
+    binding_method: String(row?.binding_method || 'None'),
+    delivery_lp_office: Boolean(row?.delivery_lp_office),
+    delivery_porter: Boolean(row?.delivery_porter),
+    delivery_courier: Boolean(row?.delivery_courier),
+    total_amount: String(row?.total_amount ?? '0'),
+    advance: String(row?.advance ?? '0'),
+    payment_method: String(row?.payment_method || 'Petty Cash'),
+    expenses: String(row?.expenses ?? '0'),
+    payment_status: String(row?.payment_status || 'unpaid'),
+    payment_option: String(row?.payment_option || ''),
+    invoice_no: String(row?.invoice_no || ''),
+    gst_percent: String(row?.gst_percent ?? '18'),
+    remarks: String(row?.remarks || ''),
   }
 }
 
@@ -215,13 +248,14 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
 export function ConvertToInJobDialog({ row, pending, error, page = false, standalone = false, onClose, onSave }: {
   row?: ApiRecord; pending: boolean; error: string; page?: boolean; standalone?: boolean; onClose: () => void; onSave: (data: Record<string, unknown>) => void
 }) {
-  const { can } = useAuth()
+  const { can, canShowPayments } = useAuth()
   const [form, setForm] = useState<Form>(() => initialForm(row))
   const [quickAddTarget, setQuickAddTarget] = useState<QuickAddTarget | null>(null)
   const touched = useRef(new Set<string>())
+  const isPipelineConversion = Boolean(row?.id && !standalone && String(row?.job_number || '').startsWith('PL-'))
   const options = useQuery({
-    queryKey: ['in-job-form-options', standalone ? 'create' : row?.id],
-    queryFn: async () => (await api.get<Options>(standalone ? '/in-jobs/create-options/' : `/pipeline-jobs/${row?.id}/in-job-options/`)).data,
+    queryKey: ['in-job-form-options', isPipelineConversion ? row?.id : 'create'],
+    queryFn: async () => (await api.get<Options>(isPipelineConversion ? `/pipeline-jobs/${row?.id}/in-job-options/` : '/in-jobs/create-options/')).data,
   })
   const dailyCounter = useQuery({
     queryKey: ['machine-daily', form.job_date],
@@ -236,14 +270,14 @@ export function ConvertToInJobDialog({ row, pending, error, page = false, standa
   useEffect(() => { setForm(initialForm(row)); touched.current.clear() }, [row?.id])
   useEffect(() => {
     const preferred = options.data?.machines.find((machine) => machine.is_default)
-    if (preferred && !touched.current.has('machine')) setForm((current) => ({ ...current, machine: String(preferred.id) }))
+    if (preferred && !row?.machine && !touched.current.has('machine')) setForm((current) => ({ ...current, machine: String(preferred.id) }))
     const selected = options.data?.customers.find((customer) => String(customer.id) === String(row?.customer || ''))
     if (selected) setForm((current) => ({
       ...current,
-      ...(!touched.current.has('customer_name') && !current.job_name ? { customer_name: selected.name } : {}),
-      ...(!touched.current.has('contact_number') ? { contact_number: selected.mobile } : {}),
+      ...(!touched.current.has('customer_name') && !current.job_name && !row?.customer_name ? { customer_name: selected.name } : {}),
+      ...(!touched.current.has('contact_number') && !row?.contact_number ? { contact_number: selected.mobile } : {}),
     }))
-  }, [options.data, row?.customer])
+  }, [options.data, row?.customer, row?.machine, row?.customer_name, row?.contact_number])
 
   const update = (field: string, value: string | boolean | number[]) => {
     touched.current.add(field)
@@ -430,9 +464,23 @@ export function ConvertToInJobDialog({ row, pending, error, page = false, standa
     event.preventDefault()
     const payload: Record<string, unknown> = {}
     Object.entries(form).forEach(([key, value]) => {
+      if (key === 'everyone_in_department' && !value) return
+      if (!canShowPayments && ['total_amount', 'advance', 'payment_method', 'expenses', 'payment_status', 'payment_option', 'invoice_no', 'gst_percent'].includes(key)) {
+        return
+      }
+      if (key === 'payment_method') {
+        if (!row?.id) payload['payment_method_input'] = value
+        return
+      }
       if (key === 'assigned_users') payload[key] = value
-      else if (idFields.has(key)) { if (value !== '') payload[key] = Number(value) }
-      else if (numericFields.has(key)) { if (value !== '') payload[key] = Number(value) }
+      else if (idFields.has(key)) {
+        if (value !== '') payload[key] = Number(value)
+        else if (row) payload[key] = null
+      }
+      else if (numericFields.has(key)) {
+        if (value !== '') payload[key] = Number(value)
+        else if (row) payload[key] = 0
+      }
       else payload[key] = value
     })
     onSave(payload)
@@ -441,7 +489,13 @@ export function ConvertToInJobDialog({ row, pending, error, page = false, standa
   const lookup = (items: Item[] = []) => [{ value: '', label: 'Unassigned' }, ...items.map((item) => ({ value: String(item.id), label: item.name }))]
 
   const contents = <>
-    <DialogTitle>{standalone ? 'Add In Job' : `Convert ${String(row?.job_number || 'pipeline job')} to In Job`}</DialogTitle>
+    <DialogTitle>
+      {row?.id && (String(row.job_number || '').startsWith('IN-') || standalone)
+        ? `Edit In Job ${row.job_number || ''}`
+        : standalone
+          ? 'Add In Job'
+          : `Convert ${String(row?.job_number || 'pipeline job')} to In Job`}
+    </DialogTitle>
     <DialogContent dividers>
       {options.isError && <Alert severity="error" sx={{ mb: 2 }}>{apiError(options.error)}</Alert>}
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -542,7 +596,7 @@ export function ConvertToInJobDialog({ row, pending, error, page = false, standa
           <Box sx={{ gridColumn: '1 / -1' }}>{checkbox('delivery_lp_office', 'LP Office')}{checkbox('delivery_porter', 'Porter')}{checkbox('delivery_courier', 'Courier')}</Box>
           <Typography color="text.secondary" fontSize={12} sx={{ gridColumn: '1 / -1' }}>Leave all unchecked for customer pickup. Add delivery details in the Delivery module when the job is ready.</Typography>
         </Section>
-        <Section title="Finance">
+        {canShowPayments && <Section title="Finance">
           {number('total_amount', 'Total Amount')}{number('advance', 'Advance')}
           {Number(form.advance || 0) > 0 && select('payment_method', 'Advance Method', [
             { value: 'Petty Cash', label: '💵 Petty Cash' },
@@ -556,11 +610,11 @@ export function ConvertToInJobDialog({ row, pending, error, page = false, standa
           <TextField label="Profit" value={profit.toFixed(2)} size="small" fullWidth slotProps={{ input: { readOnly: true } }} />
           <TextField label="Payment Status" value={Number(form.advance || 0) > 0 ? (balance === 0 ? 'Paid' : 'Partial') : 'Pending'} size="small" fullWidth slotProps={{ input: { readOnly: true } }} helperText="Calculated from recorded payments." />
           {field('invoice_no', 'Invoice No')}{number('gst_percent', 'GST %')}
-        </Section>
+        </Section>}
         <Section title="General Remark">{field('remarks', 'Remark', { multiline: true, minRows: 3, sx: { gridColumn: '1 / -1' } })}</Section>
       </>}
     </DialogContent>
-    <DialogActions sx={{ p: 2 }}><Button onClick={onClose} disabled={pending}>Cancel</Button><Button type="submit" variant="contained" disabled={pending || options.isLoading || options.isError}>{pending ? 'Creating…' : standalone ? 'Create Job' : 'Convert to In Job'}</Button></DialogActions>
+    <DialogActions sx={{ p: 2 }}><Button onClick={onClose} disabled={pending}>Cancel</Button><Button type="submit" variant="contained" disabled={pending || options.isLoading || options.isError}>{pending ? 'Saving…' : (row?.id && (String(row.job_number || '').startsWith('IN-') || standalone)) ? 'Save Changes' : standalone ? 'Create Job' : 'Convert to In Job'}</Button></DialogActions>
   </>
   return <>
     {page

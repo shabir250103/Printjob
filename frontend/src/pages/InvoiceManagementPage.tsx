@@ -13,7 +13,7 @@ import PrintRounded from '@mui/icons-material/PrintRounded'
 import CloseRounded from '@mui/icons-material/CloseRounded'
 import FilterListRounded from '@mui/icons-material/FilterListRounded'
 import AddRounded from '@mui/icons-material/AddRounded'
-import { api, apiError } from '../api/client'
+import { api, apiError, resolveMediaUrl } from '../api/client'
 import { generateInvoicePDF, type InvoiceData } from '../utils/pdf'
 
 type Invoice = {
@@ -149,7 +149,7 @@ export function InvoicePreviewDialog({ invoiceId, onClose }: { invoiceId: number
     </head><body>
       <div class="header">
         <div>
-          ${inv.company?.company_logo_url ? `<img class="logo" src="${inv.company.company_logo_url}" />` : ''}
+          ${(inv.company?.company_logo_url || inv.company_logo_url) ? `<img class="logo" src="${resolveMediaUrl(inv.company?.company_logo_url || inv.company_logo_url)}" />` : ''}
           <div class="company-name">${companyName}</div>
           <div class="company-detail">${inv.company?.address || inv.company_address_snapshot || ''}</div>
           ${inv.company?.gstin || inv.company_gstin_snapshot ? `<div class="company-detail">GSTIN: ${inv.company?.gstin || inv.company_gstin_snapshot}</div>` : ''}
@@ -199,7 +199,7 @@ export function InvoicePreviewDialog({ invoiceId, onClose }: { invoiceId: number
       ${(inv.company?.authorized_person_name || inv.authorized_person_snapshot) ? `
       <div class="sig-box">
         <div class="sig-label">Authorised Signatory</div>
-        ${(inv.company?.digital_signature_url || inv.signature_url) ? `<img class="sig-img" src="${inv.company?.digital_signature_url || inv.signature_url}" />` : '<div style="height:40px"></div>'}
+        ${(inv.company?.digital_signature_url || inv.signature_url) ? `<img class="sig-img" src="${resolveMediaUrl(inv.company?.digital_signature_url || inv.signature_url)}" />` : '<div style="height:40px"></div>'}
         <div class="sig-line"></div>
         <div class="sig-name">${inv.company?.authorized_person_name || inv.authorized_person_snapshot}</div>
         ${(inv.company?.authorized_person_designation || inv.authorized_designation_snapshot) ? `<div class="sig-desig">${inv.company?.authorized_person_designation || inv.authorized_designation_snapshot}</div>` : ''}
@@ -248,7 +248,7 @@ export function InvoicePreviewDialog({ invoiceId, onClose }: { invoiceId: number
           <Box sx={{ bgcolor: '#17212b', color: 'white', p: 2.5, borderRadius: 2, mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <Box>
               {(inv.company?.company_logo_url || inv.company_logo_url) && (
-                <Box component="img" src={inv.company?.company_logo_url || inv.company_logo_url} alt="Logo"
+                <Box component="img" src={resolveMediaUrl(inv.company?.company_logo_url || inv.company_logo_url)} alt="Logo"
                   sx={{ maxHeight: 50, maxWidth: 100, mb: 1, objectFit: 'contain' }} />
               )}
               <Typography fontWeight={800} fontSize={16}>{inv.company?.company_name || inv.company_name_snapshot}</Typography>
@@ -325,7 +325,7 @@ export function InvoicePreviewDialog({ invoiceId, onClose }: { invoiceId: number
             <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 2, textAlign: 'center' }}>
               <Typography fontSize={9} fontWeight={700} color="primary.main" textTransform="uppercase" mb={1}>Authorised Signatory</Typography>
               {(inv.company?.digital_signature_url || inv.signature_url) && (
-                <Box component="img" src={inv.company?.digital_signature_url || inv.signature_url} alt="Signature"
+                <Box component="img" src={resolveMediaUrl(inv.company?.digital_signature_url || inv.signature_url)} alt="Signature"
                   sx={{ maxWidth: 160, maxHeight: 60, mb: 1 }} />
               )}
               <Divider />

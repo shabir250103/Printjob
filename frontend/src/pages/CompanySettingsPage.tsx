@@ -10,7 +10,7 @@ import DeleteRounded from '@mui/icons-material/DeleteRounded'
 import BrushRounded from '@mui/icons-material/BrushRounded'
 import SaveRounded from '@mui/icons-material/SaveRounded'
 import CheckCircleRounded from '@mui/icons-material/CheckCircleRounded'
-import { api, apiError } from '../api/client'
+import { api, apiError, resolveMediaUrl } from '../api/client'
 
 const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/
 
@@ -111,7 +111,7 @@ function SignatureCanvas({ onCapture, existingUrl }: { onCapture: (data: string)
           <Box sx={{ mb: 2 }}>
             <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>Current signature:</Typography>
             <Box
-              component="img" src={existingUrl} alt="Current signature"
+              component="img" src={resolveMediaUrl(existingUrl)} alt="Current signature"
               sx={{ maxWidth: 220, maxHeight: 80, border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1 }}
             />
           </Box>
@@ -172,7 +172,7 @@ function SignatureCanvas({ onCapture, existingUrl }: { onCapture: (data: string)
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography variant="caption" color="text.secondary">Saved:</Typography>
             <Box
-              component="img" src={existingUrl} alt="Saved signature"
+              component="img" src={resolveMediaUrl(existingUrl)} alt="Saved signature"
               sx={{ height: 32, border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 0.5 }}
             />
           </Box>
@@ -290,7 +290,7 @@ export function CompanySettingsPage() {
                     {logoPreview ? (
                       <Box sx={{ position: 'relative' }}>
                         <Box
-                          component="img" src={logoPreview} alt="Company logo"
+                          component="img" src={resolveMediaUrl(logoPreview)} alt="Company logo"
                           sx={{ width: 100, height: 100, objectFit: 'contain', border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 1 }}
                         />
                         <Tooltip title="Remove logo">

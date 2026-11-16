@@ -33,6 +33,7 @@ export interface FieldConfig {
   lookupLabel?: string
   multiple?: boolean
   defaultValue?: string | number | boolean
+  creatable?: boolean
 }
 
 export interface ColumnConfig {

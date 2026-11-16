@@ -221,7 +221,8 @@ export const resources: Record<string, ResourceConfig> = {
       { key: 'min_stock', label: 'Minimum' }, { key: 'is_low_stock', label: 'Low stock', kind: 'boolean' },
     ],
     fields: [
-      { name: 'name', label: 'Item name', required: true }, { name: 'category', label: 'Category' },
+      { name: 'name', label: 'Item name', required: true },
+      { name: 'category', label: 'Category', type: 'select', creatable: true, defaultValue: 'Paper' },
       { name: 'color', label: 'Color' }, { name: 'gsm', label: 'GSM', type: 'number' }, { name: 'size', label: 'Size' },
       { name: 'current_stock', label: 'Current stock', type: 'number', defaultValue: 0 },
       { name: 'min_stock', label: 'Minimum stock', type: 'number', defaultValue: 0 },

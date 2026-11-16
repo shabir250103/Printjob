@@ -36,6 +36,24 @@ api.interceptors.response.use(
   },
 )
 
+export function resolveMediaUrl(url?: string): string {
+  if (!url) return ''
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+    return url
+  }
+  const cleanUrl = url.startsWith('/') ? url : `/${url}`
+  const apiUrl = import.meta.env.VITE_API_URL || ''
+  if (apiUrl.startsWith('http://') || apiUrl.startsWith('https://')) {
+    try {
+      const origin = new URL(apiUrl).origin
+      return `${origin}${cleanUrl}`
+    } catch {
+      // ignore
+    }
+  }
+  return cleanUrl
+}
+
 export function apiError(error: unknown): string {
   if (!axios.isAxiosError(error)) return 'Something went wrong. Please try again.'
   const data = error.response?.data

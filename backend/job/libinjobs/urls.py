@@ -30,6 +30,7 @@ from .views import (
     PipelineJobViewSet,
     ReportViewSet,
     RoleViewSet,
+    StockCategoryViewSet,
     StockItemViewSet,
     StockMovementViewSet,
     WastageRecordViewSet,
@@ -49,6 +50,7 @@ router.register('departments', DepartmentViewSet)
 router.register('customer-types', CustomerTypeViewSet)
 router.register('customers', CustomerViewSet)
 router.register('machines', MachineViewSet)
+router.register('stock-categories', StockCategoryViewSet, basename='stockcategory')
 router.register('stock-items', StockItemViewSet)
 router.register('pipeline-jobs', PipelineJobViewSet)
 router.register('in-jobs', InJobViewSet)
