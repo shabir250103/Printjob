@@ -630,7 +630,7 @@ export function CrudPage({ resourceKey, embedded = false }: { resourceKey: strin
                           </Box>
                         </TableCell>
                         <TableCell sx={{ color: '#334155', fontWeight: 500, whiteSpace: 'nowrap' }}>
-                          {String(row.vendor_name || '—')}
+                          {String(row.vendor || '—')}
                         </TableCell>
                         <TableCell>
                           <Chip
@@ -975,7 +975,7 @@ export function CrudPage({ resourceKey, embedded = false }: { resourceKey: strin
               </Box>
               <Box>
                 <Typography variant="caption" color="text.secondary" fontWeight={700}>VENDOR / SUPPLIER</Typography>
-                <Typography variant="body1" fontWeight={600}>{String(viewingOutJob.vendor_name || '—')}</Typography>
+                <Typography variant="body1" fontWeight={600}>{String(viewingOutJob.vendor || '—')}</Typography>
               </Box>
               <Box>
                 <Typography variant="caption" color="text.secondary" fontWeight={700}>PRIORITY</Typography>
