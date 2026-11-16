@@ -85,22 +85,38 @@ export function parseInJobName(jobName: string): Record<string, string> | null {
       continue
     }
 
-    // Combined colour and sheets: 1+7-8sheet
-    const mColSht = p.match(/^(\d+\+\d+|cmyk|multi)-(\d+)(?:sheets?)?$/i)
+    // Combined colour and sheets: cmyk-8sheet, multi-8sheet, 4+4-8sheet
+    const mColSht = p.match(/^(cmyk|multi|multicolou?r|4\+4|4\+0|1\+1|1\+0)-(\d+)(?:sheets?)?$/i)
     if (mColSht) {
       res.colour_spec = mColSht[1]
       res.sheet_count = mColSht[2]
       continue
     }
 
-    // Colour / sheet sum: 1+3 or 1+17 or 1+3 sheets
+    // Combined breakdown and sheet count: 1+7-8sheet
+    const mBdSht = p.match(/^(\d+)\+(\d+)-(\d+)(?:sheets?)?$/i)
+    if (mBdSht) {
+      res.sheet_count = mBdSht[3]
+      continue
+    }
+
+    // Explicit colour keyword: cmyk, multi, 4+4, 4+0, 4+1
+    const mColOnly = p.match(/^(cmyk|multi|multicolou?r|4\+4|4\+0|4\+1)$/i)
+    if (mColOnly) {
+      res.colour_spec = mColOnly[1].toUpperCase()
+      continue
+    }
+
+    // Sheet count expression: 1+14, 1+3, 1+17, 27+1 (number is sheet count)
     const mCol = p.match(/^(\d+)\+(\d+)(?:\s*sheets?)?$/i)
     if (mCol) {
       const front = parseInt(mCol[1], 10)
       const back = parseInt(mCol[2], 10)
-      res.colour_spec = `${front}+${back}`
       if (!res.sheet_count) {
         res.sheet_count = String(front + back)
+      }
+      if (!res.side_mode) {
+        res.side_mode = back > 0 ? 'DS' : 'SS'
       }
       continue
     }

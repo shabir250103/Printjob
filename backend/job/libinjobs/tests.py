@@ -1282,35 +1282,34 @@ class AuthenticationApiTests(APITestCase):
         self.assertEqual(p1['job_initials'], 'Tony')
         self.assertEqual(p1['customer_name'], 'Seemandham')
         self.assertEqual(p1['paper_type'], 'gold met')
-        self.assertEqual(p1['colour_spec'], '1+17')
         self.assertEqual(p1['side_mode'], 'DS')
         self.assertEqual(p1['sheet_count'], 18)
         self.assertEqual(p1['quantity'], 70)
 
-        # Example 2: jp_A&G_300gsm_DS_Matt lami_1+3
+        # Example 2: jp_A&G_300gsm_DS_Matt lami_1+3 (1+3 is sheet count = 4)
         p2 = parse_in_job_name('jp_A&G_300gsm_DS_Matt lami_1+3')
         self.assertEqual(p2['job_initials'], 'jp')
         self.assertEqual(p2['customer_name'], 'A&G')
         self.assertEqual(p2['gsm'], 300)
         self.assertEqual(p2['side_mode'], 'DS')
         self.assertEqual(p2['lamination_type'], 'Matt lami')
-        self.assertEqual(p2['colour_spec'], '1+3')
+        self.assertEqual(p2['sheet_count'], 4)
 
-        # Example 3: jp_Earthytones_170gsm_SS__27+1
+        # Example 3: jp_Earthytones_170gsm_SS__27+1 (27+1 is sheet count = 28)
         p3 = parse_in_job_name('jp_Earthytones_170gsm_SS__27+1')
         self.assertEqual(p3['job_initials'], 'jp')
         self.assertEqual(p3['customer_name'], 'Earthytones')
         self.assertEqual(p3['gsm'], 170)
         self.assertEqual(p3['side_mode'], 'SS')
-        self.assertEqual(p3['colour_spec'], '27+1')
+        self.assertEqual(p3['sheet_count'], 28)
 
-        # Example 4: Tony_R star_300gsm_SS_1+14
+        # Example 4: Tony_R star_300gsm_SS_1+14 (1+14 is sheet count = 15)
         p4 = parse_in_job_name('Tony_R star_300gsm_SS_1+14')
         self.assertEqual(p4['job_initials'], 'Tony')
         self.assertEqual(p4['customer_name'], 'R star')
         self.assertEqual(p4['gsm'], 300)
         self.assertEqual(p4['side_mode'], 'SS')
-        self.assertEqual(p4['colour_spec'], '1+14')
+        self.assertEqual(p4['sheet_count'], 15)
 
         # Example 5: jp_A&G_300gsm_SS_5sheets_lamination_cutting
         p5 = parse_in_job_name('jp_A&G_300gsm_SS_5sheets_lamination_cutting')
@@ -1328,7 +1327,6 @@ class AuthenticationApiTests(APITestCase):
         self.assertEqual(p6['gsm'], 300)
         self.assertEqual(p6['side_mode'], 'DS')
         self.assertEqual(p6['lamination_type'], 'Matt')
-        self.assertEqual(p6['colour_spec'], '1+7')
         self.assertEqual(p6['sheet_count'], 8)
 
         # Plus / comma separated format with boardtype gsm, lamination, and sheet count
@@ -1338,7 +1336,6 @@ class AuthenticationApiTests(APITestCase):
         self.assertEqual(p7['paper_type'], 'boardtype')
         self.assertEqual(p7['side_mode'], 'SS')
         self.assertEqual(p7['lamination_type'], 'matt lami')
-        self.assertEqual(p7['colour_spec'], '1+3')
         self.assertEqual(p7['sheet_count'], 4)
 
         # Plus separated with boardtype 300gsm
@@ -1349,7 +1346,6 @@ class AuthenticationApiTests(APITestCase):
         self.assertEqual(p8['gsm'], 300)
         self.assertEqual(p8['side_mode'], 'DS')
         self.assertEqual(p8['lamination_type'], 'matt lami')
-        self.assertEqual(p8['colour_spec'], '1+3')
         self.assertEqual(p8['sheet_count'], 4)
 
         # Plus separated with gold met 300
@@ -1360,7 +1356,6 @@ class AuthenticationApiTests(APITestCase):
         self.assertEqual(p9['gsm'], 300)
         self.assertEqual(p9['side_mode'], 'DS')
         self.assertEqual(p9['lamination_type'], 'matt lami')
-        self.assertEqual(p9['colour_spec'], '1+3')
         self.assertEqual(p9['sheet_count'], 4)
 
 

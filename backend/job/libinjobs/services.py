@@ -80,21 +80,34 @@ def parse_in_job_name(job_name):
             res['side_mode'] = 'DS' if 'DS' in val and 'SS' not in val else 'SS'
             continue
 
-        # Combined colour and sheets: 1+7-8sheet
-        m_col_sht = re.fullmatch(r'(\d+\+\d+|cmyk|multi)-(\d+)(?:sheets?)?', p, re.I)
+        # Combined colour and sheets: cmyk-8sheet, multi-8sheet, 4+4-8sheet
+        m_col_sht = re.fullmatch(r'(cmyk|multi|multicolou?r|4\+4|4\+0|1\+1|1\+0)-(\d+)(?:sheets?)?', p, re.I)
         if m_col_sht:
             res['colour_spec'] = m_col_sht.group(1)
             res['sheet_count'] = int(m_col_sht.group(2))
             continue
 
-        # Colour / sheet sum: 1+3 or 1+17 or 1+3 sheets
+        # Combined breakdown and sheet count: 1+7-8sheet
+        m_bd_sht = re.fullmatch(r'(\d+)\+(\d+)-(\d+)(?:sheets?)?', p, re.I)
+        if m_bd_sht:
+            res['sheet_count'] = int(m_bd_sht.group(3))
+            continue
+
+        # Explicit colour keyword: cmyk, multi, 4+4, 4+0, 4+1
+        m_col_only = re.fullmatch(r'(cmyk|multi|multicolou?r|4\+4|4\+0|4\+1)', p, re.I)
+        if m_col_only:
+            res['colour_spec'] = m_col_only.group(1).upper()
+            continue
+
+        # Sheet count expression: 1+14, 1+3, 1+17, 27+1 (number is sheet count)
         m_col = re.fullmatch(r'(\d+)\+(\d+)(?:\s*sheets?)?', p, re.I)
         if m_col:
             front = int(m_col.group(1))
             back = int(m_col.group(2))
-            res['colour_spec'] = f'{front}+{back}'
             if 'sheet_count' not in res:
                 res['sheet_count'] = front + back
+            if 'side_mode' not in res:
+                res['side_mode'] = 'DS' if back > 0 else 'SS'
             continue
 
         # Lamination
